@@ -75,6 +75,12 @@ public:
     /** Gets available sample rates */
     std::vector<float> getAvailableSampleRates();
     
+    /** Sets state of digital output lines */
+    ErrorCode setDigitalOut(int* states, int numLines = 8);
+    
+    /** Conducts impedance measurement (called from a separate thread)*/
+    ErrorCode measureImpedances(Impedances&);
+    
     /** Reads in a block of data*/
     ErrorCode fillDataBlock(DataBlock*);
     
