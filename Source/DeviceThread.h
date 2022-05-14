@@ -31,22 +31,11 @@
 #include <array>
 #include <atomic>
 
-#include "rhythm-api/rhd2000evalboard.h"
-#include "rhythm-api/rhd2000registers.h"
-#include "rhythm-api/rhd2000datablock.h"
-#include "rhythm-api/okFrontPanelDLL.h"
-
-#define CHIP_ID_RHD2132  1
-#define CHIP_ID_RHD2216  2
-#define CHIP_ID_RHD2164  4
-#define CHIP_ID_RHD2164_B  1000
-#define REGISTER_59_MISO_A  53
-#define REGISTER_59_MISO_B  58
-#define RHD2132_16CH_OFFSET 8
-
 #define MAX_NUM_CHANNELS MAX_NUM_DATA_STREAMS * 35
 
 #define MAX_NUM_HEADSTAGES MAX_NUM_DATA_STREAMS / 2
+
+#include "AbstractDevice.hpp"
 
 namespace RhythmNode
 {
@@ -58,7 +47,9 @@ namespace RhythmNode
 	{
 		ACQUISITION_BOARD,
 		INTAN_RHD_USB,
-		RHD_RECORDING_CONTROLLER
+        ONI_USB,
+		RHD_RECORDING_CONTROLLER,
+        RHS_STIM_RECORDING_CONTROLLER
 	};
 
 	enum ChannelNamingScheme
@@ -67,17 +58,8 @@ namespace RhythmNode
 		STREAM_INDEX = 2
 	};
 
-	struct Impedances
-	{
-		Array<int> streams;
-		Array<int> channels;
-		Array<float> magnitudes;
-		Array<float> phases;
-		bool valid = false;
-	};
-
 	/**
-		Communicates with a device running Intan's Rhythm Firmware
+		Communicates with a device running Rhythm or ONI firmware
 
 		@see DataThread, SourceNode
 	*/
@@ -86,6 +68,13 @@ namespace RhythmNode
 		friend class ImpedanceMeter;
 
 	public:
+        
+        /** DataThread factory */
+        static DataThread* createDataThread(SourceNode* sn);
+
+        /** Stores the board type (ACQUISITION_BOARD, ONI_USB, etc.) */
+        static BoardType boardType;
+        
 		/** Constructor; must specify the type of board used */
 		DeviceThread(SourceNode* sn, BoardType boardType);
 
@@ -93,7 +82,7 @@ namespace RhythmNode
 		~DeviceThread();
 
 		/** Creates the UI for this plugin */
-		std::unique_ptr<GenericEditor> createEditor(SourceNode* sn);
+		std::unique_ptr<GenericEditor> createEditor(SourceNode* sn) override;
 
 		/** Fills the DataBuffer with incoming data */
 		bool updateBuffer() override;
@@ -103,6 +92,9 @@ namespace RhythmNode
 
 		/** Stops data transfer */
 		bool stopAcquisition() override;
+        
+        /** Informs the DataThread about whether to expect saved settings to be loaded*/
+        void initialize(bool signalChainIsLoading) override;
 
 		/* Passes the processor's info objects to DataThread, to allow them to be configured */
 		void updateSettings(OwnedArray<ContinuousChannel>* continuousChannels,
@@ -127,17 +119,19 @@ namespace RhythmNode
 		/** Allow the thread to respond to messages sent by other plugins */
 		void handleBroadcastMessage(String msg) override;
 
-		/** Informs the DataThread about whether to expect saved settings to be loaded*/
-		void initialize(bool signalChainIsLoading) override;
-
+        /** Sets the channel count for a particular headstage */
 		void setNumChannels(int hsNum, int nChannels);
 
+        /** Returns the total number of channels for this device */
 		int getNumChannels();
 
+        /** Returns the total number of channels for a given type (HEADSTAGE, AUX, ADC) */
 		int getNumDataOutputs(ContinuousChannel::Type type);
 
+        /** Returns true if a particular headstage is enabled*/
 		bool isHeadstageEnabled(int hsNum) const;
 
+        /** Returns the channel count for a particular headstage */
 		int getChannelsInHeadstage(int hsNum) const;
 
 		/* Gets the absolute channel index from the headstage channel index*/
@@ -149,24 +143,11 @@ namespace RhythmNode
 		// for communication with SourceNode processors:
 		bool foundInputSource() override;
 
+        /** Scans all available ports for active headstages */
 		void scanPorts();
 
+        /** Saves measured impedances to a file */
 		void saveImpedances(File& file);
-
-		// DEPRECATED:
-		//int getNumDataOutputs(DataChannel::DataChannelTypes type, int subProcessor) const override;
-		//unsigned int getNumSubProcessors() const override;
-		//int getNumTTLOutputs(int subprocessor) const override;
-		//bool usesCustomNames() const override;
-		//float getSampleRate(int subprocessor) const override;
-		//float getBitVolts(const DataChannel* chan) const override;
-		//int modifyChannelGain(int channel, float gain)      override;
-		//int modifyChannelName(int channel, String newName)  override;
-		//void getEventChannelNames(StringArray& Names) const override;
-		//
-		//
-		//String getChannelUnits(int chanIndex) const override;
-		//void setDefaultChannelNames() override;
 
 		String getChannelName(int ch) const;
 
@@ -213,10 +194,11 @@ namespace RhythmNode
 
 		short getAdcRange(int adcChannel) const;
 
-		static DataThread* createDataThread(SourceNode* sn);
 
-		static BoardType boardType;
 
+        /**
+            A timer that stores the on/off times of digital output events
+         */
 		class DigitalOutputTimer : public Timer
 		{
 		public:
@@ -246,24 +228,28 @@ namespace RhythmNode
 			bool state);
 
 	private:
+        
+        /** Pointer to the AbstractDevice object */
+        std::unique_ptr<AbstractDevice> device;
+        
+        /** Vector of headstage objects*/
+        std::vector<Headstage> headstages;
 
+        /** Queue for digital output commands */
 		std::queue<DigitalOutputCommand> digitalOutputCommands;
 
+        /** Array of digital output times */
 		OwnedArray<DigitalOutputTimer> digitalOutputTimers;
+        
+        /** Thread for impedance measurement */
+        ScopedPointer<ImpedanceMeter> impedanceThread;
 
 		bool enableHeadstage(int hsNum, bool enabled, int nStr = 1, int strChans = 32);
 		void updateBoardStreams();
 		void setCableLength(int hsNum, float length);
 
-		/** Rhythm API classes*/
-		ScopedPointer<Rhd2000EvalBoard> evalBoard;
-		Rhd2000Registers chipRegisters;
 		ScopedPointer<Rhd2000DataBlock> dataBlock;
 		Array<Rhd2000EvalBoard::BoardDataSource> enabledStreams;
-
-		/** Custom classes*/
-		OwnedArray<Headstage> headstages;
-		ScopedPointer<ImpedanceMeter> impedanceThread;
 
 		/** True if device is available*/
 		bool deviceFound;
@@ -273,87 +259,6 @@ namespace RhythmNode
 
 		/** True if change in settings is needed during acquisition*/
 		bool updateSettingsDuringAcquisition;
-
-		/** Data buffers*/
-		float thisSample[MAX_NUM_CHANNELS];
-
-		float auxBuffer[MAX_NUM_CHANNELS]; // aux inputs are only sampled every 4th sample, so use this to buffer the
-										   // samples so they can be handles just like the regular neural channels later
-
-		float auxSamples[MAX_NUM_DATA_STREAMS][3];
-
-		unsigned int blockSize;
-
-		/** Cable length settings */
-		struct CableLength
-		{
-			float portA = 0.914f;
-			float portB = 0.914f;
-			float portC = 0.914f;
-			float portD = 0.914f;
-			float portE = 0.914f;
-			float portF = 0.914f;
-			float portG = 0.914f;
-			float portH = 0.914f;
-		};
-
-		/** Dsp settings*/
-		struct Dsp
-		{
-			bool enabled = true;
-			double cutoffFreq = 0.5;
-			double upperBandwidth = 7500.0f;
-			double lowerBandwidth = 1.0f;
-		};
-
-		/** struct containing board settings*/
-		struct Settings
-		{
-			bool acquireAux = false;
-			bool acquireAdc = false;
-
-			bool fastSettleEnabled = false;
-			bool fastTTLSettleEnabled = false;
-			int fastSettleTTLChannel = -1;
-			bool ttlMode = false;
-
-			Dsp dsp;
-
-			int noiseSlicerLevel;
-
-			bool desiredDAChpfState;
-			double desiredDAChpf;
-			float boardSampleRate = 30000.f;
-			int savedSampleRateIndex = 16;
-
-			CableLength cableLength;
-
-			int audioOutputL = -1;
-			int audioOutputR = -1;
-			bool ledsEnabled = true;
-			bool newScan = true;
-			int numberingScheme = 1;
-			uint16 clockDivideFactor;
-
-		} settings;
-
-		/** Path to Opal Kelly library file*/
-		String libraryFilePath;
-
-		/** Open the connection to the acquisition board*/
-		bool openBoard(String pathToLibrary);
-
-		/** Upload the bitfile*/
-		bool uploadBitfile(String pathToBitfile);
-
-		/** Initialize the board*/
-		void initializeBoard();
-
-		/** Update register settings*/
-		void updateRegisters();
-
-		/** Returns the device ID for an Intan chip*/
-		int getDeviceId(Rhd2000DataBlock* dataBlock, int stream, int& register59Value);
 
 		int* dacChannels, *dacStream;
 		float* dacThresholds;
@@ -373,6 +278,7 @@ namespace RhythmNode
 		/** Impedance data*/
 		Impedances impedances;
 
+        /** Stores names of channels */
 		StringArray channelNames;
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DeviceThread);

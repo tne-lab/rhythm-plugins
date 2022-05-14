@@ -27,6 +27,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "IntanUSBInterface.h"
 #include "AcqBoardOutput.h"
 #include "IntanRecordController.h"
+#include "IntanStimRecordController.h"
+#include "OniUSBInterface.h"
 
 #include <string>
 #ifdef WIN32
@@ -67,11 +69,21 @@ extern "C" EXPORT int getPluginInfo(int index, Plugin::PluginInfo* info)
 		info->processor.type = Plugin::Processor::SINK;
 		info->processor.creator = &createProcessor<AcqBoardOutputNamespace::AcqBoardOutput>;
 		break;
-	/*case 2:
+	case 3:
 		info->type = Plugin::Type::DATA_THREAD;
 		info->dataThread.name = "RHD Rec Controller";
 		info->dataThread.creator = &createDataThread<RhythmNode::IntanRecordController>;
-		break;*/
+		break;
+    case 4:
+        info->type = Plugin::Type::DATA_THREAD;
+        info->dataThread.name = "RHS Stim/Rec Controller";
+        info->dataThread.creator = &createDataThread<RhythmNode::IntanStimRecordController>;
+        break;
+    case 5:
+        info->type = Plugin::Type::DATA_THREAD;
+        info->dataThread.name = "ONI USB";
+        info->dataThread.creator = &createDataThread<RhythmNode::OniUSBInterface>;
+        break;
 	default:
 		return -1;
 		break;
