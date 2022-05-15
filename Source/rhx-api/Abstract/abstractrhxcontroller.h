@@ -31,8 +31,9 @@
 #ifndef ABSTRACTRHXCONTROLLER_H
 #define ABSTRACTRHXCONTROLLER_H
 
-#include "rhxglobals.h"
-#include "rhxdatablock.h"
+#include "../Hardware/rhxglobals.h"
+#include "../Hardware/rhxdatablock.h"
+
 #include <string>
 #include <vector>
 #include <deque>

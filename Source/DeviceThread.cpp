@@ -32,6 +32,8 @@
 #include "Headstage.h"
 
 #include "rhythm-api/RhythmDevice.hpp"
+#include "rhx-api/RhxDevice.hpp"
+#include "oni-api/OniDevice.hpp"
 
 using namespace RhythmNode;
 
@@ -50,11 +52,19 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
 {
 
     boardType = boardType_;
+    
+    if (boardType == ACQUISITION_BOARD)
+        device = std::make_unique<RhythmDevice>();
+    else if (boardType == INTAN_RHD_USB)
+        device = std::make_unique<RhxDevice>(0);
+    else if (boardType == RHD_RECORDING_CONTROLLER)
+        device = std::make_unique<RhxDevice>(1);
+    else if (boardType == RHS_STIM_RECORDING_CONTROLLER)
+        device = std::make_unique<RhxDevice>(2);
+    else if (boardType == ONI_USB)
+        device = std::make_unique<OniDevice>();
 
     impedanceThread = new ImpedanceMeter(this);
-
-    memset(auxBuffer, 0, sizeof(auxBuffer));
-    memset(auxSamples, 0, sizeof(auxSamples));
 
     for (int i = 0; i < 8; i++)
         adcRangeSettings[i] = 0;
@@ -64,8 +74,7 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
     for (int i = 0; i < maxNumHeadstages; i++)
         headstages.add(new Headstage(static_cast<Rhd2000EvalBoard::BoardDataSource>(i)));
 
-    if (boardType == ACQUISITION_BOARD)
-        device = std::make_unique<RhythmDevice>();
+    
     
     sourceBuffers.add(new DataBuffer(2, 10000)); // start with 2 channels and automatically resize
 
