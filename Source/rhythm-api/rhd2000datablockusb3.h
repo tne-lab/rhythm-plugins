@@ -1,11 +1,11 @@
 //----------------------------------------------------------------------------------
-// rhd2000datablock.h
+// rhd2000datablockusb3.h
 //
-// Intan Technoloies RHD2000 Rhythm Interface API
-// Rhd2000DataBlock Class Header File
-// Version 1.4 (26 February 2014)
+// Intan Technoloies RHD2000 Rhythm USB3 Interface API
+// Rhd2000DataBlockUsb3 Class Header File
+// Version 2.04 (28 March 2017)
 //
-// Copyright (c) 2013-2014 Intan Technologies LLC
+// Copyright (c) 2013-2017 Intan Technologies LLC
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the
@@ -18,38 +18,41 @@
 // See http://www.intantech.com for documentation and product information.
 //----------------------------------------------------------------------------------
 
-#ifndef RHD2000DATABLOCK_H
-#define RHD2000DATABLOCK_H
+#ifndef RHD2000DATABLOCKUSB3_H
+#define RHD2000DATABLOCKUSB3_H
 
-#define SAMPLES_PER_DATA_BLOCK_USB2 300 //modified by Open-ephys
-#define SAMPLES_PER_DATA_BLOCK_USB3 256
-#define SAMPLES_PER_DATA_BLOCK(usb3) (usb3 ? SAMPLES_PER_DATA_BLOCK_USB3 : SAMPLES_PER_DATA_BLOCK_USB2)
-#define MAX_SAMPLES_PER_DATA_BLOCK (SAMPLES_PER_DATA_BLOCK_USB3 > SAMPLES_PER_DATA_BLOCK_USB2 ? SAMPLES_PER_DATA_BLOCK_USB3 : SAMPLES_PER_DATA_BLOCK_USB2)
-#define RHD2000_HEADER_MAGIC_NUMBER 0xc691199927021942
+#define SAMPLES_PER_DATA_BLOCK 256
+#define CHANNELS_PER_STREAM 32
+#define RHD2000_HEADER_MAGIC_NUMBER 0xd7a22aaa38132a53
 
-class Rhd2000EvalBoard;
+class Rhd2000EvalBoardUsb3;
 
-class Rhd2000DataBlock
+class Rhd2000DataBlockUsb3
 {
 public:
-    Rhd2000DataBlock(int numDataStreams, bool usb3);
+    Rhd2000DataBlockUsb3(int numDataStreams);
+    ~Rhd2000DataBlockUsb3();
+    Rhd2000DataBlockUsb3(const Rhd2000DataBlockUsb3 &obj); // copy constructor
 
     std::vector<unsigned int> timeStamp;
-    std::vector<std::vector<std::vector<int> > > amplifierData;
+    int* amplifierDataFast;
+    // std::vector<std::vector<std::vector<int> > > amplifierData;
     std::vector<std::vector<std::vector<int> > > auxiliaryData;
     std::vector<std::vector<int> > boardAdcData;
     std::vector<int> ttlIn;
     std::vector<int> ttlOut;
 
-    static unsigned int calculateDataBlockSizeInWords(int numDataStreams, bool usb3, int nSamples = -1);
-    static unsigned int getSamplesPerDataBlock(bool usb3);
+    static unsigned int calculateDataBlockSizeInWords(int numDataStreams, int nSamples = -1);
+    static unsigned int getSamplesPerDataBlock();
     void fillFromUsbBuffer(unsigned char usbBuffer[], int blockIndex, int numDataStreams, int nSamples = -1);
     void print(int stream) const;
     void write(std::ofstream &saveOut, int numDataStreams) const;
-
     static bool checkUsbHeader(unsigned char usbBuffer[], int index);
-    static unsigned int convertUsbTimeStamp(unsigned char usbBuffer[], int index);
-    static int convertUsbWord(unsigned char usbBuffer[], int index);
+	static unsigned int convertUsbTimeStamp(unsigned char usbBuffer[], int index);
+    inline int fastIndex(int stream, int channel, int t) const
+    {
+    	return ((t * numDataStreamsStored * CHANNELS_PER_STREAM) + (channel * numDataStreamsStored) + stream);
+    }
 
 private:
     void allocateIntArray3D(std::vector<std::vector<std::vector<int> > > &array3D, int xSize, int ySize, int zSize);
@@ -59,9 +62,8 @@ private:
 
     void writeWordLittleEndian(std::ofstream &outputStream, int dataWord) const;
 
-
-    const unsigned int samplesPerBlock;
-    bool usb3;
+    int numDataStreamsStored;
+    int convertUsbWord(unsigned char usbBuffer[], int index);
 };
 
-#endif // RHD2000DATABLOCK_H
+#endif // RHD2000DATABLOCKUSB3_H

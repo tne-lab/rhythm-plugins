@@ -30,7 +30,7 @@
 namespace AcqBoardOutputNamespace {
 
     AcqBoardOutput::AcqBoardOutput()
-        : GenericProcessor("Acq Board Output")
+        : GenericProcessor("Rec Controller Output")
         , gateIsOpen(true)
     {
 

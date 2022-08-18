@@ -1,11 +1,11 @@
 //----------------------------------------------------------------------------------
-// rhd2000registers.cpp
+// rhd2000registersusb3.cpp
 //
-// Intan Technoloies RHD2000 Rhythm Interface API
-// Rhd2000Registers Class
-// Version 1.4 (26 February 2014)
+// Intan Technoloies RHD2000 USB3 Rhythm Interface API
+// Rhd2000RegistersUsb3 Class
+// Version 2.04 (28 March 2017)
 //
-// Copyright (c) 2013-2014 Intan Technologies LLC
+// Copyright (c) 2013-2017 Intan Technologies LLC
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the
@@ -24,7 +24,7 @@
 #include <vector>
 #include <queue>
 
-#include "rhd2000registers.h"
+#include "rhd2000registersusb3.h"
 
 using namespace std;
 
@@ -35,7 +35,7 @@ using namespace std;
 // and then downloaded to the FPGA board using Rhd2000EvalBoard::uploadCommandList.
 
 // Constructor.  Set RHD2000 register variables to default values.
-Rhd2000Registers::Rhd2000Registers(double sampleRate)
+Rhd2000RegistersUsb3::Rhd2000RegistersUsb3(double sampleRate)
 {
     aPwr.resize(64);
 
@@ -101,7 +101,7 @@ Rhd2000Registers::Rhd2000Registers(double sampleRate)
 
 // Define RHD2000 per-channel sampling rate so that certain sampling-rate-dependent registers are set correctly
 // (This function does not change the sampling rate of the FPGA; for this, use Rhd2000EvalBoard::setSampleRate.)
-void Rhd2000Registers::defineSampleRate(double newSampleRate)
+void Rhd2000RegistersUsb3::defineSampleRate(double newSampleRate)
 {
     sampleRate = newSampleRate;
 
@@ -139,59 +139,59 @@ void Rhd2000Registers::defineSampleRate(double newSampleRate)
 
 // Enable or disable amplifier fast settle function; drive amplifiers to baseline
 // if enabled.
-void Rhd2000Registers::setFastSettle(bool enabled)
+void Rhd2000RegistersUsb3::setFastSettle(bool enabled)
 {
     ampFastSettle = (enabled ? 1 : 0);
 }
 
 // Drive auxiliary digital output low
-void Rhd2000Registers::setDigOutLow()
+void Rhd2000RegistersUsb3::setDigOutLow()
 {
     digOut = 0;
     digOutHiZ = 0;
 }
 
 // Drive auxiliary digital output high
-void Rhd2000Registers::setDigOutHigh()
+void Rhd2000RegistersUsb3::setDigOutHigh()
 {
     digOut = 1;
     digOutHiZ = 0;
 }
 
 // Set auxiliary digital output to high-impedance (HiZ) state
-void Rhd2000Registers::setDigOutHiZ()
+void Rhd2000RegistersUsb3::setDigOutHiZ()
 {
     digOut = 0;
     digOutHiZ = 1;
 }
 
 // Enable or disable ADC auxiliary input 1
-void Rhd2000Registers::enableAux1(bool enabled)
+void Rhd2000RegistersUsb3::enableAux1(bool enabled)
 {
     adcAux1En = (enabled ? 1 : 0);
 }
 
 // Enable or disable ADC auxiliary input 2
-void Rhd2000Registers::enableAux2(bool enabled)
+void Rhd2000RegistersUsb3::enableAux2(bool enabled)
 {
     adcAux2En = (enabled ? 1 : 0);
 }
 
 // Enable or disable ADC auxiliary input 3
-void Rhd2000Registers::enableAux3(bool enabled)
+void Rhd2000RegistersUsb3::enableAux3(bool enabled)
 {
     adcAux3En = (enabled ? 1 : 0);
 }
 
 // Enable or disable DSP offset removal filter
-void Rhd2000Registers::enableDsp(bool enabled)
+void Rhd2000RegistersUsb3::enableDsp(bool enabled)
 {
     dspEn = (enabled ? 1 : 0);
 }
 
 // Set the DSP offset removal filter cutoff frequency as closely to the requested
 // newDspCutoffFreq (in Hz) as possible; returns the actual cutoff frequency (in Hz).
-double Rhd2000Registers::setDspCutoffFreq(double newDspCutoffFreq)
+double Rhd2000RegistersUsb3::setDspCutoffFreq(double newDspCutoffFreq)
 {
     int n;
     double x, fCutoff[16], logNewDspCutoffFreq, logFCutoff[16], minLogDiff;
@@ -217,8 +217,8 @@ double Rhd2000Registers::setDspCutoffFreq(double newDspCutoffFreq)
     } else {
         minLogDiff = 10000000.0;
         for (n = 1; n < 16; ++n) {
-            if (abs(logNewDspCutoffFreq - logFCutoff[n]) < minLogDiff) {
-                minLogDiff = abs(logNewDspCutoffFreq - logFCutoff[n]);
+            if (fabs(logNewDspCutoffFreq - logFCutoff[n]) < minLogDiff) {
+                minLogDiff = fabs(logNewDspCutoffFreq - logFCutoff[n]);
                 dspCutoffFreq = n;
             }
         }
@@ -228,7 +228,7 @@ double Rhd2000Registers::setDspCutoffFreq(double newDspCutoffFreq)
 }
 
 // Returns the current value of the DSP offset removal cutoff frequency (in Hz).
-double Rhd2000Registers::getDspCutoffFreq() const
+double Rhd2000RegistersUsb3::getDspCutoffFreq() const
 {
     double x;
     const double Pi = 2*acos(0.0);
@@ -239,13 +239,13 @@ double Rhd2000Registers::getDspCutoffFreq() const
 }
 
 // Enable or disable impedance checking mode
-void Rhd2000Registers::enableZcheck(bool enabled)
+void Rhd2000RegistersUsb3::enableZcheck(bool enabled)
 {
     zcheckEn = (enabled ? 1: 0);
 }
 
 // Power up or down impedance checking DAC
-void Rhd2000Registers::setZcheckDacPower(bool enabled)
+void Rhd2000RegistersUsb3::setZcheckDacPower(bool enabled)
 {
     zcheckDacPower = (enabled ? 1 : 0);
 }
@@ -253,7 +253,7 @@ void Rhd2000Registers::setZcheckDacPower(bool enabled)
 // Select the series capacitor used to convert the voltage waveform generated by the on-chip
 // DAC into an AC current waveform that stimulates a selected electrode for impedance testing
 // (ZcheckCs100fF, ZcheckCs1pF, or Zcheck10pF).
-void Rhd2000Registers::setZcheckScale(ZcheckCs scale)
+void Rhd2000RegistersUsb3::setZcheckScale(ZcheckCs scale)
 {
     switch (scale) {
         case ZcheckCs100fF:
@@ -270,7 +270,7 @@ void Rhd2000Registers::setZcheckScale(ZcheckCs scale)
 
 // Select impedance testing of positive or negative amplifier inputs (RHD2216 only), based
 // on the variable polarity (ZcheckPositiveInput or ZcheckNegativeInput)
-void Rhd2000Registers::setZcheckPolarity(ZcheckPolarity polarity)
+void Rhd2000RegistersUsb3::setZcheckPolarity(ZcheckPolarity polarity)
 {
     switch (polarity) {
         case ZcheckPositiveInput:
@@ -283,7 +283,7 @@ void Rhd2000Registers::setZcheckPolarity(ZcheckPolarity polarity)
 }
 
 // Select the amplifier channel (0-63) for impedance testing.
-int Rhd2000Registers::setZcheckChannel(int channel)
+int Rhd2000RegistersUsb3::setZcheckChannel(int channel)
 {
     if (channel < 0 || channel > 63) {
         return -1;
@@ -294,7 +294,7 @@ int Rhd2000Registers::setZcheckChannel(int channel)
 }
 
 // Power up or down selected amplifier on chip
-void Rhd2000Registers::setAmpPowered(int channel, bool powered)
+void Rhd2000RegistersUsb3::setAmpPowered(int channel, bool powered)
 {
     if (channel >= 0 && channel <= 63) {
         aPwr[channel] = (powered ? 1 : 0);
@@ -302,7 +302,7 @@ void Rhd2000Registers::setAmpPowered(int channel, bool powered)
 }
 
 // Power up all amplifiers on chip
-void Rhd2000Registers::powerUpAllAmps()
+void Rhd2000RegistersUsb3::powerUpAllAmps()
 {
     for (int channel = 0; channel < 64; ++channel) {
         aPwr[channel] = 1;
@@ -310,16 +310,16 @@ void Rhd2000Registers::powerUpAllAmps()
 }
 
 // Power down all amplifiers on chip
-void Rhd2000Registers::powerDownAllAmps()
+void Rhd2000RegistersUsb3::powerDownAllAmps()
 {
     for (int channel = 0; channel < 64; ++channel) {
         aPwr[channel] = 0;
     }
 }
 
-// Returns the value of a selected RAM register (0-17) on the RHD2000 chip, based
+// Returns the value of a selected RAM register (0-21) on the RHD2000 chip, based
 // on the current register variables in the class instance.
-int Rhd2000Registers::getRegisterValue(int reg) const
+int Rhd2000RegistersUsb3::getRegisterValue(int reg) const
 {
     int regout;
     const int zcheckDac = 128;  // midrange
@@ -411,7 +411,7 @@ int Rhd2000Registers::getRegisterValue(int reg) const
 
 // Returns the value of the RH1 resistor (in ohms) corresponding to a particular upper
 // bandwidth value (in Hz).
-double Rhd2000Registers::rH1FromUpperBandwidth(double upperBandwidth) const
+double Rhd2000RegistersUsb3::rH1FromUpperBandwidth(double upperBandwidth) const
 {
     double log10f = log10(upperBandwidth);
 
@@ -420,7 +420,7 @@ double Rhd2000Registers::rH1FromUpperBandwidth(double upperBandwidth) const
 
 // Returns the value of the RH2 resistor (in ohms) corresponding to a particular upper
 // bandwidth value (in Hz).
-double Rhd2000Registers::rH2FromUpperBandwidth(double upperBandwidth) const
+double Rhd2000RegistersUsb3::rH2FromUpperBandwidth(double upperBandwidth) const
 {
     double log10f = log10(upperBandwidth);
 
@@ -429,7 +429,7 @@ double Rhd2000Registers::rH2FromUpperBandwidth(double upperBandwidth) const
 
 // Returns the value of the RL resistor (in ohms) corresponding to a particular lower
 // bandwidth value (in Hz).
-double Rhd2000Registers::rLFromLowerBandwidth(double lowerBandwidth) const
+double Rhd2000RegistersUsb3::rLFromLowerBandwidth(double lowerBandwidth) const
 {
     double log10f = log10(lowerBandwidth);
 
@@ -443,7 +443,7 @@ double Rhd2000Registers::rLFromLowerBandwidth(double lowerBandwidth) const
 
 // Returns the amplifier upper bandwidth (in Hz) corresponding to a particular value
 // of the resistor RH1 (in ohms).
-double Rhd2000Registers::upperBandwidthFromRH1(double rH1) const
+double Rhd2000RegistersUsb3::upperBandwidthFromRH1(double rH1) const
 {
     double a, b, c;
 
@@ -456,7 +456,7 @@ double Rhd2000Registers::upperBandwidthFromRH1(double rH1) const
 
 // Returns the amplifier upper bandwidth (in Hz) corresponding to a particular value
 // of the resistor RH2 (in ohms).
-double Rhd2000Registers::upperBandwidthFromRH2(double rH2) const
+double Rhd2000RegistersUsb3::upperBandwidthFromRH2(double rH2) const
 {
     double a, b, c;
 
@@ -469,7 +469,7 @@ double Rhd2000Registers::upperBandwidthFromRH2(double rH2) const
 
 // Returns the amplifier lower bandwidth (in Hz) corresponding to a particular value
 // of the resistor RL (in ohms).
-double Rhd2000Registers::lowerBandwidthFromRL(double rL) const
+double Rhd2000RegistersUsb3::lowerBandwidthFromRL(double rL) const
 {
     double a, b, c;
 
@@ -493,7 +493,7 @@ double Rhd2000Registers::lowerBandwidthFromRL(double rL) const
 
 // Sets the on-chip RH1 and RH2 DAC values appropriately to set a particular amplifier
 // upper bandwidth (in Hz).  Returns an estimate of the actual upper bandwidth achieved.
-double Rhd2000Registers::setUpperBandwidth(double upperBandwidth)
+double Rhd2000RegistersUsb3::setUpperBandwidth(double upperBandwidth)
 {
     const double RH1Base = 2200.0;
     const double RH1Dac1Unit = 600.0;
@@ -569,7 +569,7 @@ double Rhd2000Registers::setUpperBandwidth(double upperBandwidth)
 
     /*
     cout << endl;
-    cout << "Rhd2000Registers::setUpperBandwidth" << endl;
+    cout << "Rhd2000RegistersUsb3::setUpperBandwidth" << endl;
     cout << fixed << setprecision(1);
 
     cout << "RH1 DAC2 = " << rH1Dac2 << ", DAC1 = " << rH1Dac1 << endl;
@@ -593,7 +593,7 @@ double Rhd2000Registers::setUpperBandwidth(double upperBandwidth)
 
 // Sets the on-chip RL DAC values appropriately to set a particular amplifier
 // lower bandwidth (in Hz).  Returns an estimate of the actual lower bandwidth achieved.
-double Rhd2000Registers::setLowerBandwidth(double lowerBandwidth)
+double Rhd2000RegistersUsb3::setLowerBandwidth(double lowerBandwidth)
 {
     const double RLBase = 3500.0;
     const double RLDac1Unit = 175.0;
@@ -643,7 +643,7 @@ double Rhd2000Registers::setLowerBandwidth(double lowerBandwidth)
     /*
     cout << endl;
     cout << fixed << setprecision(1);
-    cout << "Rhd2000Registers::setLowerBandwidth" << endl;
+    cout << "Rhd2000RegistersUsb3::setLowerBandwidth" << endl;
 
     cout << "RL DAC3 = " << rLDac3 << ", DAC2 = " << rLDac2 << ", DAC1 = " << rLDac1 << endl;
     cout << "RL target: " << rLTarget << " Ohms" << endl;
@@ -663,7 +663,7 @@ double Rhd2000Registers::setLowerBandwidth(double lowerBandwidth)
 }
 
 // Return a 16-bit MOSI command (CALIBRATE or CLEAR)
-int Rhd2000Registers::createRhd2000Command(Rhd2000CommandType commandType)
+int Rhd2000RegistersUsb3::createRhd2000Command(Rhd2000CommandType commandType)
 {
     switch (commandType) {
         case Rhd2000CommandCalibrate:
@@ -673,19 +673,19 @@ int Rhd2000Registers::createRhd2000Command(Rhd2000CommandType commandType)
             return 0x6a00;   // 0110101000000000
             break;
         default:
-        cerr << "Error in Rhd2000Registers::createRhd2000Command: " <<
+        cerr << "Error in Rhd2000RegistersUsb3::createRhd2000Command: " <<
                 "Only 'Calibrate' or 'Clear Calibration' commands take zero arguments." << endl;
             return -1;
     }
 }
 
 // Return a 16-bit MOSI command (CONVERT or READ)
-int Rhd2000Registers::createRhd2000Command(Rhd2000CommandType commandType, int arg1)
+int Rhd2000RegistersUsb3::createRhd2000Command(Rhd2000CommandType commandType, int arg1)
 {
     switch (commandType) {
         case Rhd2000CommandConvert:
             if (arg1 < 0 || arg1 > 63) {
-                cerr << "Error in Rhd2000Registers::createRhd2000Command: " <<
+                cerr << "Error in Rhd2000RegistersUsb3::createRhd2000Command: " <<
                         "Channel number out of range." << endl;
                 return -1;
             }
@@ -693,7 +693,7 @@ int Rhd2000Registers::createRhd2000Command(Rhd2000CommandType commandType, int a
                                           // arg1 is the channel number
         case Rhd2000CommandRegRead:
             if (arg1 < 0 || arg1 > 63) {
-                cerr << "Error in Rhd2000Registers::createRhd2000Command: " <<
+                cerr << "Error in Rhd2000RegistersUsb3::createRhd2000Command: " <<
                         "Register address out of range." << endl;
                 return -1;
             }
@@ -701,24 +701,24 @@ int Rhd2000Registers::createRhd2000Command(Rhd2000CommandType commandType, int a
                                           // arg1 is the register address
             break;
         default:
-            cerr << "Error in Rhd2000Registers::createRhd2000Command: " <<
+            cerr << "Error in Rhd2000RegistersUsb3::createRhd2000Command: " <<
                     "Only 'Convert' and 'Register Read' commands take one argument." << endl;
             return -1;
     }
 }
 
 // Return a 16-bit MOSI command (WRITE)
-int Rhd2000Registers::createRhd2000Command(Rhd2000CommandType commandType, int arg1, int arg2)
+int Rhd2000RegistersUsb3::createRhd2000Command(Rhd2000CommandType commandType, int arg1, int arg2)
 {
     switch (commandType) {
         case Rhd2000CommandRegWrite:
             if (arg1 < 0 || arg1 > 63) {
-                cerr << "Error in Rhd2000Registers::createRhd2000Command: " <<
+                cerr << "Error in Rhd2000RegistersUsb3::createRhd2000Command: " <<
                         "Register address out of range." << endl;
                 return -1;
             }
             if (arg2 < 0 || arg2 > 255) {
-                cerr << "Error in Rhd2000Registers::createRhd2000Command: " <<
+                cerr << "Error in Rhd2000RegistersUsb3::createRhd2000Command: " <<
                         "Register data out of range." << endl;
                 return -1;
             }
@@ -726,18 +726,20 @@ int Rhd2000Registers::createRhd2000Command(Rhd2000CommandType commandType, int a
                                                 // arg1 is the register address and arg1 is the data
             break;
         default:
-            cerr << "Error in Rhd2000Registers::createRhd2000Command: " <<
+            cerr << "Error in Rhd2000RegistersUsb3::createRhd2000Command: " <<
                     "Only 'Register Write' commands take two arguments." << endl;
             return -1;
     }
 }
 
 
-// Create a list of 60 commands to program most RAM registers on a RHD2000 chip, read those values
+// Create a list of 128 commands to program most RAM registers on a RHD2000 chip, read those values
 // back to confirm programming, read ROM registers, and (if calibrate == true) run ADC calibration.
 // Returns the length of the command list.
-int Rhd2000Registers::createCommandListRegisterConfig(vector<int> &commandList, bool calibrate)
+int Rhd2000RegistersUsb3::createCommandListRegisterConfig(std::vector<int> &commandList, bool calibrate)
 {
+    int i;
+
     commandList.clear();    // if command list already exists, erase it and start a new one
 
     // Start with a few dummy commands in case chip is still powering up
@@ -827,13 +829,16 @@ int Rhd2000Registers::createCommandListRegisterConfig(vector<int> &commandList, 
     // End with a dummy command
     commandList.push_back(createRhd2000Command(Rhd2000CommandRegRead, 63));
 
+    for (i = 0; i < (128-60); ++i) {
+        commandList.push_back(createRhd2000Command(Rhd2000CommandRegRead, 63));
+    }
 
-    return commandList.size();
+    return static_cast<int>(commandList.size());
 }
 
-// Create a list of 60 commands to sample auxiliary ADC inputs, temperature sensor, and supply
+// Create a list of 128 commands to sample auxiliary ADC inputs, temperature sensor, and supply
 // voltage sensor.  One temperature reading (one sample of ResultA and one sample of ResultB)
-// is taken during this 60-command sequence.  One supply voltage sample is taken.  Auxiliary
+// is taken during this 128-command sequence.  One supply voltage sample is taken.  Auxiliary
 // ADC inputs are continuously sampled at 1/4 the amplifier sampling rate.
 //
 // Since this command list consists of writing to Register 3, it also sets the state of the
@@ -842,7 +847,7 @@ int Rhd2000Registers::createCommandListRegisterConfig(vector<int> &commandList, 
 // different RAM banks, and the appropriate command list selected at the right time.
 //
 // Returns the length of the command list.
-int Rhd2000Registers::createCommandListTempSensor(vector<int> &commandList)
+int Rhd2000RegistersUsb3::createCommandListTempSensor(std::vector<int> &commandList)
 {
     int i;
 
@@ -893,25 +898,25 @@ int Rhd2000Registers::createCommandListTempSensor(vector<int> &commandList)
     commandList.push_back(createRhd2000Command(Rhd2000CommandConvert, 34));     // sample AuxIn3
     commandList.push_back(createRhd2000Command(Rhd2000CommandConvert, 48));     // sample Supply Voltage Sensor
 
-    for (i = 0; i < 8; ++i) {
+    for (i = 0; i < 25; ++i) {
         commandList.push_back(createRhd2000Command(Rhd2000CommandConvert, 32));     // sample AuxIn1
         commandList.push_back(createRhd2000Command(Rhd2000CommandConvert, 33));     // sample AuxIn2
         commandList.push_back(createRhd2000Command(Rhd2000CommandConvert, 34));     // sample AuxIn3
         commandList.push_back(createRhd2000Command(Rhd2000CommandRegRead, 63));      // dummy command
     }
 
-    return commandList.size();
+    return static_cast<int>(commandList.size());
 }
 
-// Create a list of 60 commands to update Register 3 (controlling the auxiliary digital ouput
+// Create a list of 128 commands to update Register 3 (controlling the auxiliary digital ouput
 // pin) every sampling period.
 //
 // Since this command list consists of writing to Register 3, it also sets the state of the
 // on-chip temperature sensor.  The temperature sensor settings are therefore changed throughout
-// this command list to coordinate with the 60-command list generated by createCommandListTempSensor().
+// this command list to coordinate with the 128-command list generated by createCommandListTempSensor().
 //
 // Returns the length of the command list.
-int Rhd2000Registers::createCommandListUpdateDigOut(vector<int> &commandList)
+int Rhd2000RegistersUsb3::createCommandListUpdateDigOut(std::vector<int> &commandList)
 {
     int i;
 
@@ -962,21 +967,21 @@ int Rhd2000Registers::createCommandListUpdateDigOut(vector<int> &commandList)
     commandList.push_back(createRhd2000Command(Rhd2000CommandRegWrite, 3, getRegisterValue(3)));
     commandList.push_back(createRhd2000Command(Rhd2000CommandRegWrite, 3, getRegisterValue(3)));
 
-    for (i = 0; i < 8; ++i) {
+    for (i = 0; i < 25; ++i) {
         commandList.push_back(createRhd2000Command(Rhd2000CommandRegWrite, 3, getRegisterValue(3)));
         commandList.push_back(createRhd2000Command(Rhd2000CommandRegWrite, 3, getRegisterValue(3)));
         commandList.push_back(createRhd2000Command(Rhd2000CommandRegWrite, 3, getRegisterValue(3)));
         commandList.push_back(createRhd2000Command(Rhd2000CommandRegWrite, 3, getRegisterValue(3)));
     }
 
-    return commandList.size();
+    return static_cast<int>(commandList.size());
 }
 
 // Create a list of up to 1024 commands to generate a sine wave of particular frequency (in Hz) and
 // amplitude (in DAC steps, 0-128) using the on-chip impedance testing voltage DAC.  If frequency is set to zero,
 // a DC baseline waveform is created.
 // Returns the length of the command list.
-int Rhd2000Registers::createCommandListZcheckDac(vector<int> &commandList, double frequency, double amplitude)
+int Rhd2000RegistersUsb3::createCommandListZcheckDac(std::vector<int> &commandList, double frequency, double amplitude)
 {
     int i, period, value;
     double t;
@@ -985,14 +990,14 @@ int Rhd2000Registers::createCommandListZcheckDac(vector<int> &commandList, doubl
     commandList.clear();    // if command list already exists, erase it and start a new one
 
     if (amplitude < 0.0 || amplitude > 128.0) {
-        cerr << "Error in Rhd2000Registers::createCommandListZcheckDac: Amplitude out of range." << endl;
+        cerr << "Error in Rhd2000RegistersUsb3::createCommandListZcheckDac: Amplitude out of range." << endl;
         return -1;
     }
     if (frequency < 0.0) {
-        cerr << "Error in Rhd2000Registers::createCommandListZcheckDac: Negative frequency not allowed." << endl;
+        cerr << "Error in Rhd2000RegistersUsb3::createCommandListZcheckDac: Negative frequency not allowed." << endl;
         return -1;
     } else if (frequency > sampleRate / 4.0) {
-        cerr << "Error in Rhd2000Registers::createCommandListZcheckDac: " <<
+        cerr << "Error in Rhd2000RegistersUsb3::createCommandListZcheckDac: " <<
                 "Frequency too high relative to sampling rate." << endl;
         return -1;
     }
@@ -1003,7 +1008,7 @@ int Rhd2000Registers::createCommandListZcheckDac(vector<int> &commandList, doubl
     } else {
         period = (int) floor(sampleRate / frequency + 0.5);
         if (period > MaxCommandLength) {
-            cerr << "Error in Rhd2000Registers::createCommandListZcheckDac: Frequency too low." << endl;
+            cerr << "Error in Rhd2000RegistersUsb3::createCommandListZcheckDac: Frequency too low." << endl;
             return -1;
         } else {
             t = 0.0;
@@ -1020,5 +1025,5 @@ int Rhd2000Registers::createCommandListZcheckDac(vector<int> &commandList, doubl
         }
     }
 
-    return commandList.size();
+    return static_cast<int>(commandList.size());
 }

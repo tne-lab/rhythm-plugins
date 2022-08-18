@@ -39,9 +39,11 @@ inline double round(double x)
 #endif
 #endif
 
+#define HS_WIDTH 70
+
 DeviceEditor::DeviceEditor(GenericProcessor* parentNode,
                              DeviceThread* board_)
-    : VisualizerEditor(parentNode, "tabText", 340), board(board_)
+    : VisualizerEditor(parentNode, "tabText", 340 + HS_WIDTH), board(board_)
 {
     canvas = nullptr;
 
@@ -56,12 +58,12 @@ DeviceEditor::DeviceEditor(GenericProcessor* parentNode,
     saveImpedances = false;
 
     // add headstage-specific controls (currently just a toggle button)
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 8; i++)
     {
         HeadstageOptionsInterface* hsOptions = new HeadstageOptionsInterface(board, this, i);
         headstageOptionsInterfaces.add(hsOptions);
         addAndMakeVisible(hsOptions);
-        hsOptions->setBounds(3, 28+i*20, 70, 18);
+        hsOptions->setBounds(3 + (i / 4) * HS_WIDTH, 28 + (i % 4) * 20, 70, 18);
     }
 
     // add rescan button

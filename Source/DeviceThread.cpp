@@ -31,6 +31,8 @@
 #include "ImpedanceMeter.h"
 #include "Headstage.h"
 
+#include "USBThread.h"
+
 using namespace RhythmNode;
 
 BoardType DeviceThread::boardType = ACQUISITION_BOARD; // initialize static member
@@ -49,7 +51,7 @@ BoardType DeviceThread::boardType = ACQUISITION_BOARD; // initialize static memb
 //#define DEBUG_EMULATE_HEADSTAGES 8
 //#define DEBUG_EMULATE_64CH
 
-#define INIT_STEP ( evalBoard->isUSB3() ? 256 : 60)
+#define INIT_STEP 256
 
 DataThread* DeviceThread::createDataThread(SourceNode *sn)
 {
@@ -77,9 +79,9 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
     int maxNumHeadstages = (boardType == RHD_RECORDING_CONTROLLER) ? 16 : 8;
 
     for (int i = 0; i < maxNumHeadstages; i++)
-        headstages.add(new Headstage(static_cast<Rhd2000EvalBoard::BoardDataSource>(i), maxNumHeadstages));
+        headstages.add(new Headstage(i, maxNumHeadstages));
 
-    evalBoard = new Rhd2000EvalBoard;
+    evalBoard = new Rhd2000EvalBoardUsb3;
 
     sourceBuffers.add(new DataBuffer(2, 10000)); // start with 2 channels and automatically resize
 
@@ -106,15 +108,11 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
 
     if (openBoard(libraryFilePath))
     {
-        dataBlock = new Rhd2000DataBlock(1, evalBoard->isUSB3());
+        dataBlock = new Rhd2000DataBlockUsb3(1);
 
         // upload bitfile and restore default settings
         initializeBoard();
 
-        if (evalBoard->isUSB3())
-            LOGD("USB3 board mode enabled");
-
-        MAX_NUM_DATA_STREAMS = evalBoard->MAX_NUM_DATA_STREAMS;
         MAX_NUM_HEADSTAGES = MAX_NUM_DATA_STREAMS / 2;
 
         //std::cout << "MAX NUM STREAMS: " << MAX_NUM_DATA_STREAMS << ", MAX NUM HEADSTAGES: " << MAX_NUM_HEADSTAGES << std::endl;
@@ -291,7 +289,7 @@ Array<int> DeviceThread::getDACchannels() const
 
 bool DeviceThread::openBoard(String pathToLibrary)
 {
-    int return_code = evalBoard->open(pathToLibrary.getCharPointer());
+    int return_code = evalBoard->open();
 
     if (return_code == 1)
     {
@@ -362,11 +360,10 @@ bool DeviceThread::uploadBitfile(String bitfilename)
         LOGD("Couldn't upload bitfile from ", bitfilename);
 
         bool response = AlertWindow::showOkCancelBox(AlertWindow::NoIcon,
-                                                     "FPGA bitfile not found.",
-                                                     (evalBoard->isUSB3() ?
-                                                     "The rhd2000_usb3.bit file was not found in the directory of the executable. Would you like to browse for it?" :
-                                                     "The rhd2000.bit file was not found in the directory of the executable. Would you like to browse for it?"),
-                                                     "Yes", "No", 0, 0);
+            "FPGA bitfile not found.",
+            "The intan_rec_controller.bit file was not found in the directory of the executable. Would you like to browse for it?",
+            "Yes", "No", 0, 0);
+
         if (response)
         {
             // browse for file
@@ -415,17 +412,16 @@ void DeviceThread::initializeBoard()
     bitfilename += "shared";
     bitfilename += File::getSeparatorString();
 
-    if (boardType == ACQUISITION_BOARD)
-        bitfilename += evalBoard->isUSB3() ? "rhd2000_usb3.bit" : "rhd2000.bit";
-    else if (boardType == INTAN_RHD_USB)
-        bitfilename += "intan_rhd_usb.bit";
-    else if (boardType == RHD_RECORDING_CONTROLLER)
+    if (boardType == RHD_RECORDING_CONTROLLER)
         bitfilename += "intan_rec_controller.bit";
 
     if (!uploadBitfile(bitfilename))
     {
         return;
     }
+
+    //Instantiate usb thread
+    usbThread = new USBThread(evalBoard);
 
     // Initialize the board
     LOGD("Initializing RHD2000 board.");
@@ -443,33 +439,33 @@ void DeviceThread::initializeBoard()
     //  - clears the ttlOut
     //  - disables all DACs and sets gain to 0
 
-    setSampleRate(Rhd2000EvalBoard::SampleRate30000Hz);
+    setSampleRate(Rhd2000EvalBoardUsb3::SampleRate30000Hz);
 
-    evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortA, settings.cableLength.portA);
-    evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortB, settings.cableLength.portB);
-    evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortC, settings.cableLength.portC);
-    evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortD, settings.cableLength.portD);
+    evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortA, settings.cableLength.portA);
+    evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortB, settings.cableLength.portB);
+    evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortC, settings.cableLength.portC);
+    evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortD, settings.cableLength.portD);
 
     if (boardType == RHD_RECORDING_CONTROLLER)
     {
-        evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortE, settings.cableLength.portE);
-        evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortF, settings.cableLength.portF);
-        evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortG, settings.cableLength.portG);
-        evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortH, settings.cableLength.portH);
+        evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortE, settings.cableLength.portE);
+        evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortF, settings.cableLength.portF);
+        evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortG, settings.cableLength.portG);
+        evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortH, settings.cableLength.portH);
     }
 
     // Select RAM Bank 0 for AuxCmd3 initially, so the ADC is calibrated.
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortA, Rhd2000EvalBoard::AuxCmd3, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortB, Rhd2000EvalBoard::AuxCmd3, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortC, Rhd2000EvalBoard::AuxCmd3, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortD, Rhd2000EvalBoard::AuxCmd3, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortA, Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortB, Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortC, Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortD, Rhd2000EvalBoardUsb3::AuxCmd3, 0);
 
     if (boardType == RHD_RECORDING_CONTROLLER)
     {
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortE, Rhd2000EvalBoard::AuxCmd3, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortF, Rhd2000EvalBoard::AuxCmd3, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortG, Rhd2000EvalBoard::AuxCmd3, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortH, Rhd2000EvalBoard::AuxCmd3, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortE, Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortF, Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortG, Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortH, Rhd2000EvalBoardUsb3::AuxCmd3, 0);
     }
 
     // Since our longest command sequence is 60 commands, run the SPI interface for
@@ -488,29 +484,29 @@ void DeviceThread::initializeBoard()
 
     // Read the resulting single data block from the USB interface. We don't
     // need to do anything with this, since it was only used for ADC calibration
-    ScopedPointer<Rhd2000DataBlock> dataBlock = new Rhd2000DataBlock(evalBoard->getNumEnabledDataStreams(), evalBoard->isUSB3());
+    ScopedPointer<Rhd2000DataBlockUsb3> dataBlock = new Rhd2000DataBlockUsb3(evalBoard->getNumEnabledDataStreams());
 
     evalBoard->readDataBlock(dataBlock, INIT_STEP);
     // Now that ADC calibration has been performed, we switch to the command sequence
     // that does not execute ADC calibration.
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortA, Rhd2000EvalBoard::AuxCmd3,
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortA, Rhd2000EvalBoardUsb3::AuxCmd3,
         settings.fastSettleEnabled ? 2 : 1);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortB, Rhd2000EvalBoard::AuxCmd3,
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortB, Rhd2000EvalBoardUsb3::AuxCmd3,
         settings.fastSettleEnabled ? 2 : 1);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortC, Rhd2000EvalBoard::AuxCmd3,
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortC, Rhd2000EvalBoardUsb3::AuxCmd3,
         settings.fastSettleEnabled ? 2 : 1);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortD, Rhd2000EvalBoard::AuxCmd3,
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortD, Rhd2000EvalBoardUsb3::AuxCmd3,
         settings.fastSettleEnabled ? 2 : 1);
 
     if (boardType == RHD_RECORDING_CONTROLLER)
     {
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortE, Rhd2000EvalBoard::AuxCmd3,
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortE, Rhd2000EvalBoardUsb3::AuxCmd3,
             settings.fastSettleEnabled ? 2 : 1);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortF, Rhd2000EvalBoard::AuxCmd3,
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortF, Rhd2000EvalBoardUsb3::AuxCmd3,
             settings.fastSettleEnabled ? 2 : 1);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortG, Rhd2000EvalBoard::AuxCmd3,
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortG, Rhd2000EvalBoardUsb3::AuxCmd3,
             settings.fastSettleEnabled ? 2 : 1);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortH, Rhd2000EvalBoard::AuxCmd3,
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortH, Rhd2000EvalBoardUsb3::AuxCmd3,
             settings.fastSettleEnabled ? 2 : 1);
     }
 
@@ -546,62 +542,45 @@ void DeviceThread::scanPorts()
         headstage->setNumStreams(0); // reset stream count
     }
 
-    Rhd2000EvalBoard::BoardDataSource initStreamPorts[8] =
-    {
-        Rhd2000EvalBoard::PortA1,
-        Rhd2000EvalBoard::PortA2,
-        Rhd2000EvalBoard::PortB1,
-        Rhd2000EvalBoard::PortB2,
-        Rhd2000EvalBoard::PortC1,
-        Rhd2000EvalBoard::PortC2,
-        Rhd2000EvalBoard::PortD1,
-        Rhd2000EvalBoard::PortD2
-        //Rhd2000EvalBoard::PortE1,
-        //Rhd2000EvalBoard::PortE2,
-        //Rhd2000EvalBoard::PortF1,
-        //Rhd2000EvalBoard::PortF2,
-        //Rhd2000EvalBoard::PortG1,
-        //Rhd2000EvalBoard::PortG2,
-        //Rhd2000EvalBoard::PortH1,
-        //Rhd2000EvalBoard::PortH2
-    };
-
-    chipId.insertMultiple(0, -1, 8);
+    chipId.clearQuick();
+    chipId.insertMultiple(0, -1, MAX_NUM_HEADSTAGES);
     Array<int> tmpChipId(chipId);
 
-    setSampleRate(Rhd2000EvalBoard::SampleRate30000Hz, true); // set to 30 kHz temporarily
+    setSampleRate(Rhd2000EvalBoardUsb3::SampleRate30000Hz, true); // set to 30 kHz temporarily
 
     // Enable all data streams, and set sources to cover one or two chips
     // on Ports A-D.
 
     // THIS IS DIFFERENT FOR RECORDING CONTROLLER:
-    for (int i = 0; i < 8; i++)
-        evalBoard->setDataSource(i, initStreamPorts[i]);
-
-    for (int i = 0; i < 8; i++)
+    // Enable all data streams, and set sources to cover one or two chips
+    // on Ports A-D.
+    for (int i = 0; i < MAX_NUM_DATA_STREAMS; i += 2)
+    {
         evalBoard->enableDataStream(i, true);
+        evalBoard->enableDataStream(i + 1, false);
+    }
 
     LOGD("Number of enabled data streams: ", evalBoard->getNumEnabledDataStreams());
 
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortA,
-        Rhd2000EvalBoard::AuxCmd3, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortB,
-        Rhd2000EvalBoard::AuxCmd3, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortC,
-        Rhd2000EvalBoard::AuxCmd3, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortD,
-        Rhd2000EvalBoard::AuxCmd3, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortA,
+        Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortB,
+        Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortC,
+        Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortD,
+        Rhd2000EvalBoardUsb3::AuxCmd3, 0);
 
     if (boardType == RHD_RECORDING_CONTROLLER)
     {
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortE,
-            Rhd2000EvalBoard::AuxCmd3, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortF,
-            Rhd2000EvalBoard::AuxCmd3, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortG,
-            Rhd2000EvalBoard::AuxCmd3, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortH,
-            Rhd2000EvalBoard::AuxCmd3, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortE,
+            Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortF,
+            Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortG,
+            Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortH,
+            Rhd2000EvalBoardUsb3::AuxCmd3, 0);
     }
 
     // Since our longest command sequence is 60 commands, we run the SPI
@@ -609,8 +588,8 @@ void DeviceThread::scanPorts()
     evalBoard->setMaxTimeStep(INIT_STEP);
     evalBoard->setContinuousRunMode(false);
 
-    ScopedPointer<Rhd2000DataBlock> dataBlock =
-        new Rhd2000DataBlock(evalBoard->getNumEnabledDataStreams(), evalBoard->isUSB3());
+    ScopedPointer<Rhd2000DataBlockUsb3> dataBlock =
+        new Rhd2000DataBlockUsb3(evalBoard->getNumEnabledDataStreams());
 
     Array<int> sumGoodDelays;
     sumGoodDelays.insertMultiple(0, 0, 8);
@@ -628,17 +607,17 @@ void DeviceThread::scanPorts()
 
     for (delay = 0; delay < 16; delay++)
     {
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortA, delay);
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortB, delay);
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortC, delay);
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortD, delay);
+        evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortA, delay);
+        evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortB, delay);
+        evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortC, delay);
+        evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortD, delay);
 
         if (boardType == RHD_RECORDING_CONTROLLER)
         {
-            evalBoard->setCableDelay(Rhd2000EvalBoard::PortE, delay);
-            evalBoard->setCableDelay(Rhd2000EvalBoard::PortF, delay);
-            evalBoard->setCableDelay(Rhd2000EvalBoard::PortG, delay);
-            evalBoard->setCableDelay(Rhd2000EvalBoard::PortH, delay);
+            evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortE, delay);
+            evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortF, delay);
+            evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortG, delay);
+            evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortH, delay);
         }
 
         // Start SPI interface.
@@ -700,7 +679,7 @@ void DeviceThread::scanPorts()
         }
         for (int i = 0; i < enabledStreams.size(); i++)
         {
-            enabledStreams.set(i,Rhd2000EvalBoard::PortA1);
+            enabledStreams.set(i,Rhd2000EvalBoardUsb3::PortA1);
         }
     }
 
@@ -761,24 +740,24 @@ void DeviceThread::scanPorts()
         }
     }
 
-    evalBoard->setCableDelay(Rhd2000EvalBoard::PortA,
+    evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortA,
                              std::max(optimumDelay[0],optimumDelay[1]));
-    evalBoard->setCableDelay(Rhd2000EvalBoard::PortB,
+    evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortB,
                              std::max(optimumDelay[2],optimumDelay[3]));
-    evalBoard->setCableDelay(Rhd2000EvalBoard::PortC,
+    evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortC,
                              std::max(optimumDelay[4],optimumDelay[5]));
-    evalBoard->setCableDelay(Rhd2000EvalBoard::PortD,
+    evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortD,
                              std::max(optimumDelay[6],optimumDelay[7]));
 
     if (boardType == RHD_RECORDING_CONTROLLER)
     {
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortE,
+        evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortE,
             std::max(optimumDelay[8], optimumDelay[9]));
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortF,
+        evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortF,
             std::max(optimumDelay[10], optimumDelay[11]));
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortG,
+        evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortG,
             std::max(optimumDelay[12], optimumDelay[13]));
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortH,
+        evalBoard->setCableDelay(Rhd2000EvalBoardUsb3::PortH,
             std::max(optimumDelay[14], optimumDelay[15]));
 
     }
@@ -810,7 +789,7 @@ void DeviceThread::scanPorts()
     //newScan = true;
 }
 
-int DeviceThread::getDeviceId(Rhd2000DataBlock* dataBlock, int stream, int& register59Value)
+int DeviceThread::getDeviceId(Rhd2000DataBlockUsb3* dataBlock, int stream, int& register59Value)
 {
     bool intanChipPresent;
 
@@ -1306,15 +1285,13 @@ void DeviceThread::updateBoardStreams()
 {
     for (int i = 0; i < MAX_NUM_DATA_STREAMS; i++)
     {
-        if (i < enabledStreams.size())
+        if (enabledStreams.contains(i))
         {
-            //std::cout << "Enabling stream " << i << " with source " << enabledStreams[i] << std::endl;
-            evalBoard->enableDataStream(i,true);
-            evalBoard->setDataSource(i,enabledStreams[i]);
+            evalBoard->enableDataStream(i, true);
         }
         else
         {
-            evalBoard->enableDataStream(i,false);
+            evalBoard->enableDataStream(i, false);
         }
     }
 }
@@ -1385,97 +1362,97 @@ void DeviceThread::setSampleRate(int sampleRateIndex, bool isTemporary)
 
     int numUsbBlocksToRead = 0; // placeholder - make this change the number of blocks that are read in DeviceThread::updateBuffer()
 
-    Rhd2000EvalBoard::AmplifierSampleRate sampleRate; // just for local use
+    Rhd2000EvalBoardUsb3::AmplifierSampleRate sampleRate; // just for local use
 
     switch (sampleRateIndex)
     {
         case 0:
-            sampleRate = Rhd2000EvalBoard::SampleRate1000Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate1000Hz;
             numUsbBlocksToRead = 1;
             settings.boardSampleRate = 1000.0f;
             break;
         case 1:
-            sampleRate = Rhd2000EvalBoard::SampleRate1250Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate1250Hz;
             numUsbBlocksToRead = 1;
             settings.boardSampleRate = 1250.0f;
             break;
         case 2:
-            sampleRate = Rhd2000EvalBoard::SampleRate1500Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate1500Hz;
             numUsbBlocksToRead = 1;
             settings.boardSampleRate = 1500.0f;
             break;
         case 3:
-            sampleRate = Rhd2000EvalBoard::SampleRate2000Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate2000Hz;
             numUsbBlocksToRead = 1;
             settings.boardSampleRate = 2000.0f;
             break;
         case 4:
-            sampleRate = Rhd2000EvalBoard::SampleRate2500Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate2500Hz;
             numUsbBlocksToRead = 1;
             settings.boardSampleRate = 2500.0f;
             break;
         case 5:
-            sampleRate = Rhd2000EvalBoard::SampleRate3000Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate3000Hz;
             numUsbBlocksToRead = 2;
             settings.boardSampleRate = 3000.0f;
             break;
         case 6:
-            sampleRate = Rhd2000EvalBoard::SampleRate3333Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate3333Hz;
             numUsbBlocksToRead = 2;
             settings.boardSampleRate = 3333.0f;
             break;
         case 7:
-            sampleRate = Rhd2000EvalBoard::SampleRate4000Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate4000Hz;
             numUsbBlocksToRead = 2;
             settings.boardSampleRate = 4000.0f;
             break;
         case 8:
-            sampleRate = Rhd2000EvalBoard::SampleRate5000Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate5000Hz;
             numUsbBlocksToRead = 3;
             settings.boardSampleRate = 5000.0f;
             break;
         case 9:
-            sampleRate = Rhd2000EvalBoard::SampleRate6250Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate6250Hz;
             numUsbBlocksToRead = 3;
             settings.boardSampleRate = 6250.0f;
             break;
         case 10:
-            sampleRate = Rhd2000EvalBoard::SampleRate8000Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate8000Hz;
             numUsbBlocksToRead = 4;
             settings.boardSampleRate = 8000.0f;
             break;
         case 11:
-            sampleRate = Rhd2000EvalBoard::SampleRate10000Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate10000Hz;
             numUsbBlocksToRead = 6;
             settings.boardSampleRate = 10000.0f;
             break;
         case 12:
-            sampleRate = Rhd2000EvalBoard::SampleRate12500Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate12500Hz;
             numUsbBlocksToRead = 7;
             settings.boardSampleRate = 12500.0f;
             break;
         case 13:
-            sampleRate = Rhd2000EvalBoard::SampleRate15000Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate15000Hz;
             numUsbBlocksToRead = 8;
             settings.boardSampleRate = 15000.0f;
             break;
         case 14:
-            sampleRate = Rhd2000EvalBoard::SampleRate20000Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate20000Hz;
             numUsbBlocksToRead = 12;
             settings.boardSampleRate = 20000.0f;
             break;
         case 15:
-            sampleRate = Rhd2000EvalBoard::SampleRate25000Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate25000Hz;
             numUsbBlocksToRead = 14;
             settings.boardSampleRate = 25000.0f;
             break;
         case 16:
-            sampleRate = Rhd2000EvalBoard::SampleRate30000Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate30000Hz;
             numUsbBlocksToRead = 16;
             settings.boardSampleRate = 30000.0f;
             break;
         default:
-            sampleRate = Rhd2000EvalBoard::SampleRate10000Hz;
+            sampleRate = Rhd2000EvalBoardUsb3::SampleRate10000Hz;
             numUsbBlocksToRead = 6;
             settings.boardSampleRate = 10000.0f;
     }
@@ -1488,17 +1465,17 @@ void DeviceThread::setSampleRate(int sampleRateIndex, bool isTemporary)
 
     // Now that we have set our sampling rate, we can set the MISO sampling delay
     // which is dependent on the sample rate.
-    evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortA, settings.cableLength.portA);
-    evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortB, settings.cableLength.portB);
-    evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortC, settings.cableLength.portC);
-    evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortD, settings.cableLength.portD);
+    evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortA, settings.cableLength.portA);
+    evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortB, settings.cableLength.portB);
+    evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortC, settings.cableLength.portC);
+    evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortD, settings.cableLength.portD);
 
     if (boardType == RHD_RECORDING_CONTROLLER)
     {
-        evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortE, settings.cableLength.portE);
-        evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortF, settings.cableLength.portF);
-        evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortG, settings.cableLength.portG);
-        evalBoard->setCableLengthMeters(Rhd2000EvalBoard::PortH, settings.cableLength.portH);
+        evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortE, settings.cableLength.portE);
+        evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortF, settings.cableLength.portF);
+        evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortG, settings.cableLength.portG);
+        evalBoard->setCableLengthMeters(Rhd2000EvalBoardUsb3::PortH, settings.cableLength.portH);
     }
 
     updateRegisters();
@@ -1525,38 +1502,38 @@ void DeviceThread::updateRegisters()
     // output pin on chips on each SPI port.
     chipRegisters.setDigOutLow();   // Take auxiliary output out of HiZ mode.
     commandSequenceLength = chipRegisters.createCommandListUpdateDigOut(commandList);
-    evalBoard->uploadCommandList(commandList, Rhd2000EvalBoard::AuxCmd1, 0);
-    evalBoard->selectAuxCommandLength(Rhd2000EvalBoard::AuxCmd1, 0, commandSequenceLength - 1);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortA, Rhd2000EvalBoard::AuxCmd1, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortB, Rhd2000EvalBoard::AuxCmd1, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortC, Rhd2000EvalBoard::AuxCmd1, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortD, Rhd2000EvalBoard::AuxCmd1, 0);
+    evalBoard->uploadCommandList(commandList, Rhd2000EvalBoardUsb3::AuxCmd1, 0);
+    evalBoard->selectAuxCommandLength(Rhd2000EvalBoardUsb3::AuxCmd1, 0, commandSequenceLength - 1);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortA, Rhd2000EvalBoardUsb3::AuxCmd1, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortB, Rhd2000EvalBoardUsb3::AuxCmd1, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortC, Rhd2000EvalBoardUsb3::AuxCmd1, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortD, Rhd2000EvalBoardUsb3::AuxCmd1, 0);
 
     if (boardType == RHD_RECORDING_CONTROLLER)
     {
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortE, Rhd2000EvalBoard::AuxCmd1, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortF, Rhd2000EvalBoard::AuxCmd1, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortG, Rhd2000EvalBoard::AuxCmd1, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortH, Rhd2000EvalBoard::AuxCmd1, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortE, Rhd2000EvalBoardUsb3::AuxCmd1, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortF, Rhd2000EvalBoardUsb3::AuxCmd1, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortG, Rhd2000EvalBoardUsb3::AuxCmd1, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortH, Rhd2000EvalBoardUsb3::AuxCmd1, 0);
 
     }
 
     // Next, we'll create a command list for the AuxCmd2 slot.  This command sequence
     // will sample the temperature sensor and other auxiliary ADC inputs.
     commandSequenceLength = chipRegisters.createCommandListTempSensor(commandList);
-    evalBoard->uploadCommandList(commandList, Rhd2000EvalBoard::AuxCmd2, 0);
-    evalBoard->selectAuxCommandLength(Rhd2000EvalBoard::AuxCmd2, 0, commandSequenceLength - 1);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortA, Rhd2000EvalBoard::AuxCmd2, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortB, Rhd2000EvalBoard::AuxCmd2, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortC, Rhd2000EvalBoard::AuxCmd2, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortD, Rhd2000EvalBoard::AuxCmd2, 0);
+    evalBoard->uploadCommandList(commandList, Rhd2000EvalBoardUsb3::AuxCmd2, 0);
+    evalBoard->selectAuxCommandLength(Rhd2000EvalBoardUsb3::AuxCmd2, 0, commandSequenceLength - 1);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortA, Rhd2000EvalBoardUsb3::AuxCmd2, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortB, Rhd2000EvalBoardUsb3::AuxCmd2, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortC, Rhd2000EvalBoardUsb3::AuxCmd2, 0);
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortD, Rhd2000EvalBoardUsb3::AuxCmd2, 0);
 
     if (boardType == RHD_RECORDING_CONTROLLER)
     {
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortE, Rhd2000EvalBoard::AuxCmd2, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortF, Rhd2000EvalBoard::AuxCmd2, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortG, Rhd2000EvalBoard::AuxCmd2, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortH, Rhd2000EvalBoard::AuxCmd2, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortE, Rhd2000EvalBoardUsb3::AuxCmd2, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortF, Rhd2000EvalBoardUsb3::AuxCmd2, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortG, Rhd2000EvalBoardUsb3::AuxCmd2, 0);
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortH, Rhd2000EvalBoardUsb3::AuxCmd2, 0);
     }
 
     // Before generating register configuration command sequences, set amplifier
@@ -1573,14 +1550,14 @@ void DeviceThread::updateRegisters()
 
     chipRegisters.createCommandListRegisterConfig(commandList, true);
     // Upload version with ADC calibration to AuxCmd3 RAM Bank 0.
-    evalBoard->uploadCommandList(commandList, Rhd2000EvalBoard::AuxCmd3, 0);
-    evalBoard->selectAuxCommandLength(Rhd2000EvalBoard::AuxCmd3, 0,
+    evalBoard->uploadCommandList(commandList, Rhd2000EvalBoardUsb3::AuxCmd3, 0);
+    evalBoard->selectAuxCommandLength(Rhd2000EvalBoardUsb3::AuxCmd3, 0,
                                       commandSequenceLength - 1);
 
     commandSequenceLength = chipRegisters.createCommandListRegisterConfig(commandList, false);
     // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
-    evalBoard->uploadCommandList(commandList, Rhd2000EvalBoard::AuxCmd3, 1);
-    evalBoard->selectAuxCommandLength(Rhd2000EvalBoard::AuxCmd3, 0,
+    evalBoard->uploadCommandList(commandList, Rhd2000EvalBoardUsb3::AuxCmd3, 1);
+    evalBoard->selectAuxCommandLength(Rhd2000EvalBoardUsb3::AuxCmd3, 0,
                                       commandSequenceLength - 1);
 
 
@@ -1588,29 +1565,29 @@ void DeviceThread::updateRegisters()
 
     commandSequenceLength = chipRegisters.createCommandListRegisterConfig(commandList, false);
     // Upload version with fast settle enabled to AuxCmd3 RAM Bank 2.
-    evalBoard->uploadCommandList(commandList, Rhd2000EvalBoard::AuxCmd3, 2);
-    evalBoard->selectAuxCommandLength(Rhd2000EvalBoard::AuxCmd3, 0,
+    evalBoard->uploadCommandList(commandList, Rhd2000EvalBoardUsb3::AuxCmd3, 2);
+    evalBoard->selectAuxCommandLength(Rhd2000EvalBoardUsb3::AuxCmd3, 0,
                                       commandSequenceLength - 1);
 
     chipRegisters.setFastSettle(false);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortA, Rhd2000EvalBoard::AuxCmd3,
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortA, Rhd2000EvalBoardUsb3::AuxCmd3,
                                     settings.fastSettleEnabled ? 2 : 1);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortB, Rhd2000EvalBoard::AuxCmd3,
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortB, Rhd2000EvalBoardUsb3::AuxCmd3,
                                     settings.fastSettleEnabled ? 2 : 1);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortC, Rhd2000EvalBoard::AuxCmd3,
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortC, Rhd2000EvalBoardUsb3::AuxCmd3,
                                     settings.fastSettleEnabled ? 2 : 1);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortD, Rhd2000EvalBoard::AuxCmd3,
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortD, Rhd2000EvalBoardUsb3::AuxCmd3,
                                     settings.fastSettleEnabled ? 2 : 1);
 
     if (boardType == RHD_RECORDING_CONTROLLER)
     {
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortE, Rhd2000EvalBoard::AuxCmd3,
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortE, Rhd2000EvalBoardUsb3::AuxCmd3,
             settings.fastSettleEnabled ? 2 : 1);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortF, Rhd2000EvalBoard::AuxCmd3,
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortF, Rhd2000EvalBoardUsb3::AuxCmd3,
             settings.fastSettleEnabled ? 2 : 1);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortG, Rhd2000EvalBoard::AuxCmd3,
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortG, Rhd2000EvalBoardUsb3::AuxCmd3,
             settings.fastSettleEnabled ? 2 : 1);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortH, Rhd2000EvalBoard::AuxCmd3,
+        evalBoard->selectAuxCommandBank(Rhd2000EvalBoardUsb3::PortH, Rhd2000EvalBoardUsb3::AuxCmd3,
             settings.fastSettleEnabled ? 2 : 1);
     }
 }
@@ -1622,28 +1599,28 @@ void DeviceThread::setCableLength(int hsNum, float length)
     switch (hsNum)
     {
         case 0:
-            evalBoard->setCableLengthFeet(Rhd2000EvalBoard::PortA, length);
+            evalBoard->setCableLengthFeet(Rhd2000EvalBoardUsb3::PortA, length);
             break;
         case 1:
-            evalBoard->setCableLengthFeet(Rhd2000EvalBoard::PortB, length);
+            evalBoard->setCableLengthFeet(Rhd2000EvalBoardUsb3::PortB, length);
             break;
         case 2:
-            evalBoard->setCableLengthFeet(Rhd2000EvalBoard::PortC, length);
+            evalBoard->setCableLengthFeet(Rhd2000EvalBoardUsb3::PortC, length);
             break;
         case 3:
-            evalBoard->setCableLengthFeet(Rhd2000EvalBoard::PortD, length);
+            evalBoard->setCableLengthFeet(Rhd2000EvalBoardUsb3::PortD, length);
             break;
         case 4:
-            evalBoard->setCableLengthFeet(Rhd2000EvalBoard::PortE, length);
+            evalBoard->setCableLengthFeet(Rhd2000EvalBoardUsb3::PortE, length);
             break;
         case 5:
-            evalBoard->setCableLengthFeet(Rhd2000EvalBoard::PortF, length);
+            evalBoard->setCableLengthFeet(Rhd2000EvalBoardUsb3::PortF, length);
             break;
         case 6:
-            evalBoard->setCableLengthFeet(Rhd2000EvalBoard::PortG, length);
+            evalBoard->setCableLengthFeet(Rhd2000EvalBoardUsb3::PortG, length);
             break;
         case 7:
-            evalBoard->setCableLengthFeet(Rhd2000EvalBoard::PortH, length);
+            evalBoard->setCableLengthFeet(Rhd2000EvalBoardUsb3::PortH, length);
             break;
         default:
             break;
@@ -1657,15 +1634,9 @@ bool DeviceThread::startAcquisition()
         return false;
 
     impedanceThread->waitSafely();
-    dataBlock = new Rhd2000DataBlock(evalBoard->getNumEnabledDataStreams(), evalBoard->isUSB3());
+    dataBlock = new Rhd2000DataBlockUsb3(evalBoard->getNumEnabledDataStreams());
 
     LOGD( "Expecting ", getNumChannels() ," channels." );
-
-    if (boardType == ACQUISITION_BOARD)
-    {
-        int ledArray[8] = {1, 1, 0, 0, 0, 0, 0, 0};
-        evalBoard->setLedDisplay(ledArray);
-    }
 
     // reset TTL output state
     for (int k = 0; k < 16; k++)
@@ -1678,16 +1649,16 @@ bool DeviceThread::startAcquisition()
 
     //LOGD("RHD2000 data thread starting acquisition.");
 
-    if (1)
-    {
-        //LOGD("Flushing FIFO.");
-        evalBoard->flush();
-        evalBoard->setContinuousRunMode(true);
-        evalBoard->run();
-    }
 
-    blockSize = dataBlock->calculateDataBlockSizeInWords(evalBoard->getNumEnabledDataStreams(), evalBoard->isUSB3());
+    blockSize = dataBlock->calculateDataBlockSizeInWords(evalBoard->getNumEnabledDataStreams());
+    evalBoard->flush();
+    usbThread->startAcquisition(blockSize * 2);
+    evalBoard->setContinuousRunMode(true);
+    evalBoard->run();
+
     //LOGD("Expecting blocksize of ", blockSize, " for ", evalBoard->getNumEnabledDataStreams(), " streams");
+
+   
 
     startThread();
 
@@ -1700,6 +1671,9 @@ bool DeviceThread::stopAcquisition()
 {
 
     //LOGD("RHD2000 data thread stopping acquisition.");
+
+    std::cout << "RHD2000 data thread stopping acquisition." << std::endl;
+    usbThread->stopAcquisition();
 
     if (isThreadRunning())
     {
@@ -1728,7 +1702,7 @@ bool DeviceThread::stopAcquisition()
 
     if (deviceFound && boardType == ACQUISITION_BOARD)
     {
-        LOGD( "Number of 16-bit words in FIFO: ", evalBoard->numWordsInFifo() );
+        //LOGD( "Number of 16-bit words in FIFO: ", evalBoard->numWordsInFifo() );
 
         int ledArray[8] = {1, 0, 0, 0, 0, 0, 0, 0};
         evalBoard->setLedDisplay(ledArray);
@@ -1749,124 +1723,124 @@ bool DeviceThread::stopAcquisition()
 
 bool DeviceThread::updateBuffer()
 {
+
+
     unsigned char* bufferPtr;
-    double ts;
+    //std::cout << "Current number of words: " <<  evalBoard->numWordsInFifo() << " for " << blockSize << std::endl;
+    long return_code;
 
-    if (evalBoard->isUSB3() || evalBoard->numWordsInFifo() >= blockSize)
+    return_code = usbThread->usbRead(bufferPtr);
+    if (return_code == 0)
+        return true;
+
+    int index = 0;
+    int auxIndex, chanIndex;
+    int numStreams = enabledStreams.size();
+    int nSamps = Rhd2000DataBlockUsb3::getSamplesPerDataBlock();
+
+    //evalBoard->printFIFOmetrics();
+    for (int samp = 0; samp < nSamps; samp++)
     {
-        bool return_code;
+        int channel = -1;
 
-        return_code = evalBoard->readRawDataBlock(&bufferPtr);
-        // see Rhd2000DataBlock::fillFromUsbBuffer() for documentation of buffer structure
-
-        int index = 0;
-        int auxIndex, chanIndex;
-        int numStreams = enabledStreams.size();
-        int nSamps = Rhd2000DataBlock::getSamplesPerDataBlock(evalBoard->isUSB3());
-
-        //evalBoard->printFIFOmetrics();
-        for (int samp = 0; samp < nSamps; samp++)
+        if (!Rhd2000DataBlockUsb3::checkUsbHeader(bufferPtr, index))
         {
-            int channel = -1;
-
-            if (!Rhd2000DataBlock::checkUsbHeader(bufferPtr, index))
-            {
-                LOGE( "Error in Rhd2000EvalBoard::readDataBlock: Incorrect header." );
-                break;
-            }
-
-            index += 8; // magic number header width (bytes)
-            int64 timestamp = Rhd2000DataBlock::convertUsbTimeStamp(bufferPtr, index);
-            index += 4; // timestamp width
-            auxIndex = index; // aux chans start at this offset
-            index += 6 * numStreams; // width of the 3 aux chans
-
-            for (int dataStream = 0; dataStream < numStreams; dataStream++)
-            {                
-                
-                int nChans = numChannelsPerDataStream[dataStream];
-
-                chanIndex = index + 2*dataStream;
-                
-                if ((chipId[dataStream] == CHIP_ID_RHD2132) && (nChans == 16)) //RHD2132 16ch. headstage
-                {
-                    chanIndex += 2 * RHD2132_16CH_OFFSET * numStreams;
-                }
-                
-                for (int chan = 0; chan < nChans; chan++)
-                {
-                    channel++;
-                    thisSample[channel] = float(*(uint16*)(bufferPtr + chanIndex) - 32768) * 0.195f;
-                    chanIndex += 2 * numStreams; // single chan width (2 bytes)
-                }
-                
-            }
-            index += 64 * numStreams; // neural data width
-            auxIndex += 2 * numStreams; // skip AuxCmd1 slots (see updateRegisters())
-            // copy the 3 aux channels
-            if (settings.acquireAux)
-            {
-                for (int dataStream = 0; dataStream < numStreams; dataStream++)
-                {
-                    if (chipId[dataStream] != CHIP_ID_RHD2164_B)
-                    {
-                        int auxNum = (samp+3) % 4;
-                        if (auxNum < 3)
-                        {
-                            auxSamples[dataStream][auxNum] = float(*(uint16*)(bufferPtr + auxIndex) - 32768)*0.0000374;
-                        }
-                        for (int chan = 0; chan < 3; chan++)
-                        {
-                            channel++;
-                            if (auxNum == 3)
-                            {
-                                auxBuffer[channel] = auxSamples[dataStream][chan];
-                            }
-                            thisSample[channel] = auxBuffer[channel];
-                        }
-                    }
-                    auxIndex += 2; // single chan width (2 bytes)
-                }
-            }
-            index += 2 * numStreams; // skip over filler word at the end of each data stream
-            // copy the 8 ADC channels
-            if (settings.acquireAdc)
-            {
-                for (int adcChan = 0; adcChan < 8; ++adcChan)
-                {
-
-                    channel++;
-                    // ADC waveform units = volts
-
-                    if (boardType == ACQUISITION_BOARD)
-                    {
-                        thisSample[channel] = adcRangeSettings[adcChan] == 0 ?
-                            0.00015258789 * float(*(uint16*)(bufferPtr + index)) - 5 - 0.4096 : // account for +/-5V input range and DC offset
-                            0.00030517578 * float(*(uint16*)(bufferPtr + index)); // shouldn't this be half the value, not 2x?
-                    }
-                    else if (boardType == INTAN_RHD_USB) {
-                        thisSample[channel] = 0.000050354 * float(dataBlock->boardAdcData[adcChan][samp]);
-                    }
-                    index += 2; // single chan width (2 bytes)
-                }
-            }
-            else
-            {
-                index += 16; // skip ADC chans (8 * 2 bytes)
-            }
-
-            uint64 ttlEventWord = *(uint64*)(bufferPtr + index) & 65535;
-
-            index += 4;
-
-            sourceBuffers[0]->addToBuffer(thisSample,
-                                          &timestamp,
-                                          &ts,
-                                          &ttlEventWord,
-                                          1);
+            LOGE( "Error in Rhd2000EvalBoardUsb3::readDataBlock: Incorrect header." );
+            break;
         }
 
+        index += 8; // magic number header width (bytes)
+        int64 timestamp = Rhd2000DataBlockUsb3::convertUsbTimeStamp(bufferPtr, index);
+        index += 4; // timestamp width
+        auxIndex = index; // aux chans start at this offset
+        index += 6 * numStreams; // width of the 3 aux chans
+
+        for (int dataStream = 0; dataStream < numStreams; dataStream++)
+        {                
+                
+            int nChans = numChannelsPerDataStream[dataStream];
+
+            chanIndex = index + 2*dataStream;
+                
+            if ((chipId[dataStream] == CHIP_ID_RHD2132) && (nChans == 16)) //RHD2132 16ch. headstage
+            {
+                chanIndex += 2 * RHD2132_16CH_OFFSET * numStreams;
+            }
+                
+            for (int chan = 0; chan < nChans; chan++)
+            {
+                channel++;
+                thisSample[channel] = float(*(uint16*)(bufferPtr + chanIndex) - 32768) * 0.195f;
+                chanIndex += 2 * numStreams; // single chan width (2 bytes)
+            }
+                
+        }
+        index += 64 * numStreams; // neural data width
+        auxIndex += 2 * numStreams; // skip AuxCmd1 slots (see updateRegisters())
+        // copy the 3 aux channels
+        if (settings.acquireAux)
+        {
+            for (int dataStream = 0; dataStream < numStreams; dataStream++)
+            {
+                if (chipId[dataStream] != CHIP_ID_RHD2164_B)
+                {
+                    int auxNum = (samp+3) % 4;
+                    if (auxNum < 3)
+                    {
+                        auxSamples[dataStream][auxNum] = float(*(uint16*)(bufferPtr + auxIndex) - 32768)*0.0000374;
+                    }
+                    for (int chan = 0; chan < 3; chan++)
+                    {
+                        channel++;
+                        if (auxNum == 3)
+                        {
+                            auxBuffer[channel] = auxSamples[dataStream][chan];
+                        }
+                        thisSample[channel] = auxBuffer[channel];
+                    }
+                }
+                auxIndex += 2; // single chan width (2 bytes)
+            }
+        }
+        index += 2 * numStreams; // skip over filler word at the end of each data stream
+        // copy the 8 ADC channels
+        if (settings.acquireAdc)
+        {
+            for (int adcChan = 0; adcChan < 8; ++adcChan)
+            {
+
+                channel++;
+                // ADC waveform units = volts
+
+                if (boardType == ACQUISITION_BOARD)
+                {
+                    thisSample[channel] = adcRangeSettings[adcChan] == 0 ?
+                        0.00015258789 * float(*(uint16*)(bufferPtr + index)) - 5 - 0.4096 : // account for +/-5V input range and DC offset
+                        0.00030517578 * float(*(uint16*)(bufferPtr + index)); // shouldn't this be half the value, not 2x?
+                }
+                else if (boardType == INTAN_RHD_USB) {
+                    thisSample[channel] = 0.000050354 * float(dataBlock->boardAdcData[adcChan][samp]);
+                }
+                index += 2; // single chan width (2 bytes)
+            }
+        }
+        else
+        {
+            index += 16; // skip ADC chans (8 * 2 bytes)
+        }
+
+        uint64 ttlEventWord = *(uint64*)(bufferPtr + index) & 65535;
+
+        index += 4;
+
+        sourceBuffers[0]->addToBuffer(thisSample,
+                                        &timestamp,
+                                        &ts,
+                                        &ttlEventWord,
+                                        1);
     }
+
+   
 
 
     if (updateSettingsDuringAcquisition)
@@ -1897,8 +1871,8 @@ bool DeviceThread::updateBuffer()
         evalBoard->setExternalFastSettleChannel(settings.fastSettleTTLChannel);
         evalBoard->setDacHighpassFilter(settings.desiredDAChpf);
         evalBoard->enableDacHighpassFilter(settings.desiredDAChpfState);
-        evalBoard->enableBoardLeds(settings.ledsEnabled);
-        evalBoard->setClockDivider(settings.clockDivideFactor);
+        //evalBoard->enableBoardLeds(settings.ledsEnabled);
+        //evalBoard->setClockDivider(settings.clockDivideFactor);
 
         updateSettingsDuringAcquisition = false;
     }
@@ -2049,8 +2023,8 @@ void DeviceThread::enableBoardLeds(bool enable)
 
     if (isAcquisitionActive())
         updateSettingsDuringAcquisition = true;
-    else
-        evalBoard->enableBoardLeds(enable);
+    //else
+    //    evalBoard->enableBoardLeds(enable);
 }
 
 int DeviceThread::setClockDivider(int divide_ratio)
@@ -2074,8 +2048,8 @@ int DeviceThread::setClockDivider(int divide_ratio)
 
     if (isAcquisitionActive())
         updateSettingsDuringAcquisition = true;
-    else
-        evalBoard->setClockDivider(settings.clockDivideFactor);
+    //else
+    //    evalBoard->setClockDivider(settings.clockDivideFactor);
 
     return divide_ratio;
 }

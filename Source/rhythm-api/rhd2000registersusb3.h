@@ -1,11 +1,11 @@
 //----------------------------------------------------------------------------------
-// rhd2000registers.h
+// rhd2000registersusb3.h
 //
-// Intan Technoloies RHD2000 Rhythm Interface API
-// Rhd2000Registers Class Header File
-// Version 1.4 (26 February 2014)
+// Intan Technoloies RHD2000 USB3 Rhythm Interface API
+// Rhd2000RegistersUsb3 Class Header File
+// Version 2.04 (28 March 2017)
 //
-// Copyright (c) 2013-2014 Intan Technologies LLC
+// Copyright (c) 2013-2017 Intan Technologies LLC
 //
 // This software is provided 'as-is', without any express or implied warranty.
 // In no event will the authors be held liable for any damages arising from the
@@ -18,14 +18,14 @@
 // See http://www.intantech.com for documentation and product information.
 //----------------------------------------------------------------------------------
 
-#ifndef RHD2000REGISTERS_H
-#define RHD2000REGISTERS_H
+#ifndef RHD2000REGISTERSUSB3_H
+#define RHD2000REGISTERSUSB3_H
 
-class Rhd2000Registers
+class Rhd2000RegistersUsb3
 {
 
 public:
-    Rhd2000Registers(double sampleRate);
+    Rhd2000RegistersUsb3(double sampleRate);
 
     void defineSampleRate(double newSampleRate);
 
@@ -163,4 +163,4 @@ private:
 
 };
 
-#endif // RHD2000REGISTERS_H
+#endif // RHD2000REGISTERSUSB3_H

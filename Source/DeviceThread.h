@@ -31,9 +31,9 @@
 #include <array>
 #include <atomic>
 
-#include "rhythm-api/rhd2000evalboard.h"
-#include "rhythm-api/rhd2000registers.h"
-#include "rhythm-api/rhd2000datablock.h"
+#include "rhythm-api/rhd2000evalboardusb3.h"
+#include "rhythm-api/rhd2000registersusb3.h"
+#include "rhythm-api/rhd2000datablockusb3.h"
 #include "rhythm-api/okFrontPanelDLL.h"
 
 #define CHIP_ID_RHD2132  1
@@ -44,13 +44,12 @@
 #define REGISTER_59_MISO_B  58
 #define RHD2132_16CH_OFFSET 8
 
-#define MAX_NUM_CHANNELS MAX_NUM_DATA_STREAMS_USB3 * 35 + 16
-
 namespace RhythmNode
 {
 
 	class Headstage;
 	class ImpedanceMeter;
+	class USBThread;
 
 	enum BoardType
 	{
@@ -244,7 +243,6 @@ namespace RhythmNode
 			bool state);
 
 		int MAX_NUM_HEADSTAGES;
-		int MAX_NUM_DATA_STREAMS;
 
 	private:
 
@@ -257,10 +255,10 @@ namespace RhythmNode
 		void setCableLength(int hsNum, float length);
 
 		/** Rhythm API classes*/
-		ScopedPointer<Rhd2000EvalBoard> evalBoard;
-		Rhd2000Registers chipRegisters;
-		ScopedPointer<Rhd2000DataBlock> dataBlock;
-		Array<Rhd2000EvalBoard::BoardDataSource> enabledStreams;
+		ScopedPointer<Rhd2000EvalBoardUsb3> evalBoard;
+		Rhd2000RegistersUsb3 chipRegisters;
+		ScopedPointer<Rhd2000DataBlockUsb3> dataBlock;
+		Array<int> enabledStreams;
 
 		/** Custom classes*/
 		OwnedArray<Headstage> headstages;
@@ -281,7 +279,9 @@ namespace RhythmNode
 		float auxBuffer[MAX_NUM_CHANNELS]; // aux inputs are only sampled every 4th sample, so use this to buffer the
 										   // samples so they can be handles just like the regular neural channels later
 
-		float auxSamples[MAX_NUM_DATA_STREAMS_USB3][3];
+		float auxSamples[MAX_NUM_DATA_STREAMS][3];
+
+		ScopedPointer<USBThread> usbThread;
 
 		unsigned int blockSize;
 
@@ -354,7 +354,7 @@ namespace RhythmNode
 		void updateRegisters();
 
 		/** Returns the device ID for an Intan chip*/
-		int getDeviceId(Rhd2000DataBlock* dataBlock, int stream, int& register59Value);
+		int getDeviceId(Rhd2000DataBlockUsb3* dataBlock, int stream, int& register59Value);
 
 		int* dacChannels, *dacStream;
 		float* dacThresholds;
@@ -375,6 +375,8 @@ namespace RhythmNode
 		Impedances impedances;
 
 		StringArray channelNames;
+
+		double ts = 0; // placeholder double timestamp value
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DeviceThread);
 	};

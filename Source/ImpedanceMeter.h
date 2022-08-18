@@ -31,9 +31,9 @@
 #include <array>
 #include <atomic>
 
-#include "rhythm-api/rhd2000evalboard.h"
-#include "rhythm-api/rhd2000registers.h"
-#include "rhythm-api/rhd2000datablock.h"
+#include "rhythm-api/rhd2000evalboardusb3.h"
+#include "rhythm-api/rhd2000registersusb3.h"
+#include "rhythm-api/rhd2000datablockusb3.h"
 #include "rhythm-api/okFrontPanelDLL.h"
 
 #include "DeviceThread.h"
@@ -128,7 +128,7 @@ namespace RhythmNode
             objects, loads this data into this SignalProcessor object, scaling the raw
 			data to generate waveforms with units of volts or microvolts.*/
 		int loadAmplifierData(
-			std::queue<Rhd2000DataBlock>& dataQueue,
+			std::queue<Rhd2000DataBlockUsb3>& dataQueue,
 			int numBlocks, 
 			int numDataStreams);
 
