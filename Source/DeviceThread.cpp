@@ -70,11 +70,17 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
     dacThresholds = new float[8];
     dacChannelsToUpdate = new bool[8];
 
+    frontPanelLib = std::make_unique<okCFrontPanel>();
+
     // TODO Select Serial Number if multiple ones are found
     std::string serialNumber = frontPanelLib->GetDeviceListSerial(0).c_str();
 
+    std::cout << "Serial number: " << serialNumber << std::endl;
+
     // Populate usbVersion field.
     usbVersion = (frontPanelLib->GetDeviceListModel(0) == okCFrontPanel::brdXEM6010LX45) ? USB2 : USB3;
+
+    std::cout << "USB Version: " << usbVersion << std::endl;
 
     AmplifierSampleRate ampSampleRate = AmplifierSampleRate::SampleRate30000Hz;
 
@@ -101,14 +107,19 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
     {
         AlertWindow::showMessageBox(AlertWindow::NoIcon,
                                                      "Opal Kelly library not found.",
-                                                     "The Opal Kelly library file was not found in the directory of the executable. Please locate it and re-add the plugin to the signal chain."
+                                                     "The Opal Kelly library file was not found in the directory of the executable. Please locate it and re-add the plugin to the signal chain.",
                                                      "Ok.");
+
+        return;
+
     } else if (errorCode == -2)
     {
         AlertWindow::showMessageBox(AlertWindow::NoIcon,
                                                      "No device was found.",
-                                                     "Please connect one and re-add the plugin to the signal chain."
+                                                     "Please connect one and re-add the plugin to the signal chain.",
                                                      "Ok.");
+
+        return;
     } 
 
     String bitfilename;
@@ -149,6 +160,12 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
         }
 
         device->uploadFPGABitfile(bitfilename.toStdString());
+
+        LOGD("Initializing device.");
+
+        device->initialize();
+
+        deviceFound = true;
     } 
 
     if (success)
@@ -182,11 +199,7 @@ DeviceThread::~DeviceThread()
 
 void DeviceThread::initialize(bool signalChainIsLoading)
 {
-    
-    LOGD("Initializing device.");
-    
-    device->initialize();
-    
+
     adcChannelNames.clear();
     ttlLineNames.clear();
 
@@ -341,7 +354,12 @@ void DeviceThread::scanPorts()
 
     device->findConnectedChips(chipType, portIndex, commandStream, numChannelsOnPort);
 
-    // initialize headstages
+    // initialize headstage objects
+
+    for (int i = 0; i < chipType.size(); i++)
+    {
+        LOGC(int(chipType[i]), " ", portIndex[i], " ", commandStream[i], " ", numChannelsOnPort[i]);
+    }
 }
 
 

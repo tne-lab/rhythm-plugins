@@ -416,6 +416,9 @@ void DeviceEditor::saveVisualizerEditorParameters(XmlElement* xml)
 void DeviceEditor::loadVisualizerEditorParameters(XmlElement* xml)
 {
 
+    if (!board->foundInputSource())
+        return;
+
     sampleRateInterface->setSelectedId(xml->getIntAttribute("SampleRate"));
     bandwidthInterface->setLowerBandwidth(xml->getDoubleAttribute("LowCut"));
     bandwidthInterface->setUpperBandwidth(xml->getDoubleAttribute("HighCut"));

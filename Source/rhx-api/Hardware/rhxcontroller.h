@@ -127,7 +127,7 @@ private:
     RHXController(const RHXController&);            // declaration only
     RHXController& operator=(const RHXController&); // declaration only
 
-    okCFrontPanel *dev;
+    std::unique_ptr<okCFrontPanel> dev;
 
     // Opal Kelly module USB interface endpoint addresses common to all controller types
     enum EndPoint {

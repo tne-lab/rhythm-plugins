@@ -63,8 +63,8 @@ namespace RhythmNode
 
 	enum UsbVersion
 	{
-		USB2,
-		USB3
+		USB2 = 2,
+		USB3 = 3
 	};
 
 	enum ChannelNamingScheme

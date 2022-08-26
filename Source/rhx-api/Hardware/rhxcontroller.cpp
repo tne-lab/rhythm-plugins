@@ -46,27 +46,26 @@
 //       (e.g., an Intan Stim/Recording Controller with 128-channel capacity)
 
 RHXController::RHXController(ControllerType type_, AmplifierSampleRate sampleRate_) :
-    AbstractRHXController(type_, sampleRate_),
-    dev(nullptr)
+    AbstractRHXController(type_, sampleRate_)
 {
 }
 
 RHXController::~RHXController()
 {
-    if (dev) delete dev;
+
 }
 
 // Find an Opal Kelly board attached to a USB port with the given serial number and open it returns 1 if successful,
 // -1 if FrontPanel cannot be loaded, and -2 if board can't be found.
 int RHXController::open(const std::string& boardSerialNumber)
 {
-    dev = new okCFrontPanel;
-    std::cout << "Attempting to connect to device '" << boardSerialNumber.c_str() << "'\n";
+    dev = std::make_unique<okCFrontPanel>();
+    std::cout << "Attempting to connect to device '" << boardSerialNumber << "'\n";
 
     okCFrontPanel::ErrorCode result = dev->OpenBySerial(boardSerialNumber);
     // Attempt to open device.
     if (result != okCFrontPanel::NoError) {
-        delete dev;
+        dev.reset();
         std::cerr << "Device could not be opened.  Is one connected?\n";
         std::cerr << "Error = " << result << "\n";
         return -2;
@@ -78,8 +77,8 @@ int RHXController::open(const std::string& boardSerialNumber)
     // Get some general information about the XEM.
     std::cout << "Opal Kelly device firmware version: " << dev->GetDeviceMajorVersion() << "." <<
             dev->GetDeviceMinorVersion() << '\n';
-    std::cout << "Opal Kelly device serial number: " << dev->GetSerialNumber().c_str() << '\n';
-    std::cout << "Opal Kelly device ID string: " << dev->GetDeviceID().c_str() << "\n\n";
+    std::cout << "Opal Kelly device serial number: " << dev->GetSerialNumber() << '\n';
+    std::cout << "Opal Kelly device ID string: " << dev->GetDeviceID() << "\n\n";
 
     return 1;
 }
@@ -122,7 +121,7 @@ bool RHXController::uploadFPGABitfile(const std::string& filename)
     // Check for Opal Kelly FrontPanel support in the FPGA configuration.
     if (dev->IsFrontPanelEnabled() == false) {
         std::cerr << "Opal Kelly FrontPanel support is not enabled in this FPGA configuration.\n";
-        delete dev;
+        dev.reset();
         return false;
     }
 
@@ -143,7 +142,7 @@ void RHXController::resetBoard()
 {
     std::lock_guard<std::mutex> lockOk(okMutex);
 
-    resetBoard(dev);
+    resetBoard(dev.get());
 
     if (type == ControllerRecordUSB3) {
         // Set up USB3 block transfer parameters.
@@ -1523,7 +1522,7 @@ void RHXController::selectAuxCommandBank(BoardPort port, AuxCmdSlot auxCommandSl
 int RHXController::getBoardMode()
 {
     std::lock_guard<std::mutex> lockOk(okMutex);
-    return getBoardMode(dev);
+    return getBoardMode(dev.get());
 }
 
 // Return number of SPI ports and if I/O expander board is present.
@@ -1534,7 +1533,7 @@ int RHXController::getNumSPIPorts(bool& expanderBoardDetected)
         return 4;
     }
     std::lock_guard<std::mutex> lockOk(okMutex);
-    return getNumSPIPorts(dev, (type == ControllerRecordUSB3), expanderBoardDetected);
+    return getNumSPIPorts(dev.get(), (type == ControllerRecordUSB3), expanderBoardDetected);
 }
 
 // Set all 16 bits of the digital TTL output lines on the FPGA to zero.  Not used with ControllerStimRecordUSB2.
