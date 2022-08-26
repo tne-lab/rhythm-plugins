@@ -33,19 +33,40 @@
 // This class provides access to and control an ONI-based USB acquisition board
 
 OniDevice::OniDevice() :
-    AbstractRHXController(ControllerOEECP5, AmplifierSampleRate::SampleRate30000Hz),
-    ctx(nullptr)
+    AbstractRHXController(ControllerOEECP5, AmplifierSampleRate::SampleRate30000Hz)
 {
+    // initialize oni context
+    ctx = oni_create_ctx("riffa"); // "riffa" is the driver name
+
+    oni_init_ctx(ctx, 0); // 0 is the host index. You can use -1 to get default slot
 }
 
 OniDevice::~OniDevice()
 {
-    if (ctx) delete ctx;
+    oni_destroy_ctx(ctx);
 }
 
 int OniDevice::open(const std::string& boardSerialNumber)
 {
-    // initialize oni context
+   
+    oni_size_t num_devs;
+    size_t num_devs_sz = sizeof(num_devs);
+    oni_get_opt(ctx, ONI_OPT_NUMDEVICES, &num_devs, &num_devs_sz);
+
+    size_t devices_sz = sizeof(oni_device_t) * num_devs;
+    oni_device_t* devices = (oni_device_t*) malloc(devices_sz);
+    oni_get_opt(ctx, ONI_OPT_DEVICETABLE, devices, &devices_sz);
+
+    for (int i = 0; i < num_devs; i++)
+    {
+        oni_device_t* dev = devices + i;
+        std::cout << "Device Index: " << dev->idx <<
+            ", Device ID: " << dev->id <<
+            ", Read size: " << dev->read_size <<
+            ", Write size: " << dev->write_size << std::endl;
+    }
+
+    free(devices);
 
     return 1;
 }
@@ -62,13 +83,16 @@ bool OniDevice::uploadFPGABitfile(const std::string& filename)
 // rate to 30.0 kS/s/ch.
 void OniDevice::resetBoard()
 {
- 
+
+    oni_reg_val_t reg = 1;
+    oni_set_opt(ctx, ONI_OPT_RESET, &reg, sizeof(oni_size_t));
 }
 
 // Initiate SPI data acquisition.
 void OniDevice::run()
 {
-    
+    oni_reg_val_t reg = 2;
+    oni_set_opt(ctx, ONI_OPT_RESETACQCOUNTER, &reg, sizeof(oni_size_t));
 }
 
 // Is the FPGA currently running?

@@ -125,7 +125,7 @@ private:
     bool isDataClockLocked() const override;
     void forceAllDataStreamsOff() override;
     
-    oni_ctx* ctx;
+    oni_ctx ctx;
    
 };
 
