@@ -30,13 +30,16 @@
 #include <string.h>
 #include <array>
 #include <atomic>
-
-#include "rhythm-api/rhd2000evalboard.h"
-#include "rhythm-api/rhd2000registers.h"
-#include "rhythm-api/rhd2000datablock.h"
-#include "rhythm-api/okFrontPanelDLL.h"
+#include <deque>
 
 #include "DeviceThread.h"
+
+#include "rhx-api/Hardware/rhxregisters.h"
+#include "rhx-api/Hardware/rhxdatablock.h"
+
+#define SAMPLES_PER_DATA_BLOCK_USB2 300 
+#define SAMPLES_PER_DATA_BLOCK_USB3 256
+#define SAMPLES_PER_DATA_BLOCK(usb3) (usb3 ? SAMPLES_PER_DATA_BLOCK_USB3 : SAMPLES_PER_DATA_BLOCK_USB2)
 
 namespace RhythmNode
 {
@@ -50,6 +53,9 @@ namespace RhythmNode
 
 		/** Destructor*/
 		~ImpedanceMeter();
+
+		/** Sets the impedance frequency*/
+		void setFrequency(double freq);
 
 		/** Runs the impedance measurement*/
 		void run() override;
@@ -66,7 +72,7 @@ namespace RhythmNode
 	private:
 
 		/** Calculates impedance values for all channels*/
-		void runImpedanceMeasurement(Impedances& impedances);
+		void runImpedanceMeasurement(Impedances& impedances, double frequency);
 		
 		/** Restores settings of device*/
 		void restoreBoardSettings();
@@ -128,13 +134,17 @@ namespace RhythmNode
             objects, loads this data into this SignalProcessor object, scaling the raw
 			data to generate waveforms with units of volts or microvolts.*/
 		int loadAmplifierData(
-			std::queue<Rhd2000DataBlock>& dataQueue,
+			std::deque<RHXDataBlock*>& dataQueue,
 			int numBlocks, 
 			int numDataStreams);
 
 		std::vector<std::vector<std::vector<double>>> amplifierPreFilter;
 
+		std::unique_ptr<RHXRegisters> chipRegisters;
+
 		DeviceThread* board;
+
+		double frequency = 1000.0;
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ImpedanceMeter);
 	};

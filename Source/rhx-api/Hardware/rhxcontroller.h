@@ -34,9 +34,7 @@
 #include "../Abstract/abstractrhxcontroller.h"
 #include "rhxglobals.h"
 #include "rhxdatablock.h"
-#include "okFrontPanel.h"
-
-using namespace std;
+#include "okFrontPanelDLL.h"
 
 const int USB3BlockSize	= 1024;
 const int RAMBurstSize = 32;
@@ -51,8 +49,8 @@ public:
     bool isSynthetic() const override { return false; }
     bool isPlayback() const override { return false; }
     AcquisitionMode acquisitionMode() const override { return LiveMode; }
-    int open(const string& boardSerialNumber) override;
-    bool uploadFPGABitfile(const string& filename) override;
+    int open(const std::string& boardSerialNumber) override;
+    bool uploadFPGABitfile(const std::string& filename) override;
     void resetBoard() override;
 
     void run() override;
@@ -61,7 +59,7 @@ public:
     void resetFpga() override;
 
     bool readDataBlock(RHXDataBlock *dataBlock) override;
-    bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) override;
+    bool readDataBlocks(int numBlocks, std::deque<RHXDataBlock*> &dataQueue) override;
     long readDataBlocksRaw(int numBlocks, uint8_t* buffer) override;
 
     void setContinuousRunMode(bool continuousMode) override;
@@ -71,6 +69,8 @@ public:
     void setDataSource(int stream, BoardDataSource dataSource) override;  // used only with ControllerRecordUSB2
     void setTtlOut(const int* ttlOutArray) override;  // not used with ControllerStimRecordUSB2
     void setDacManual(int value) override;
+    void setClockDivider(int divide_factor) override;
+    void enableLeds(bool ledsOn) override;
     void setLedDisplay(const int* ledArray) override;
     void setSpiLedDisplay(const int* ledArray) override;  // not used with ControllerRecordUSB2
     void setDacGain(int gain) override;
@@ -112,10 +112,10 @@ public:
     void clearTtlOut() override;                 // not used with ControllerStimRecordUSB2
     void resetSequencers() override;
     void programStimReg(int stream, int channel, StimRegister reg, int value) override;
-    void uploadCommandList(const vector<unsigned int> &commandList, AuxCmdSlot auxCommandSlot, int bank = 0) override;
+    void uploadCommandList(const std::vector<unsigned int> &commandList, AuxCmdSlot auxCommandSlot, int bank = 0) override;
 
-    int findConnectedChips(vector<ChipType> &chipType, vector<int> &portIndex, vector<int> &commandStream,
-                           vector<int> &numChannelsOnPort) override;
+    int findConnectedChips(std::vector<ChipType> &chipType, std::vector<int> &portIndex, std::vector<int> &commandStream,
+        std::vector<int> &numChannelsOnPort) override;
 
     // Physical board only
     static void resetBoard(okCFrontPanel* dev_);
@@ -249,6 +249,41 @@ private:
         PipeInAuxCmd3Lsw_S_USB2 = 0x85,
         PipeInAuxCmd4Msw_S_USB2 = 0x86,
         PipeInAuxCmd4Lsw_S_USB2 = 0x87
+    };
+
+    // Opal Kelly module USB interface endpoint addresses for Open Ephys boards
+    enum OkEndPoint {
+        WireInMaxTimeStepLsb = 0x01,
+        WireInMaxTimeStepMsb = 0x02,
+
+        WireInCmdRamAddr = 0x05,
+        WireInCmdRamBank = 0x06,
+        WireInCmdRamData = 0x07,
+        WireInAuxCmdBank1 = 0x08,
+        WireInAuxCmdBank2 = 0x09,
+        WireInAuxCmdBank3 = 0x0a,
+        WireInAuxCmdLength1 = 0x0b,
+        WireInAuxCmdLength2 = 0x0c,
+        WireInAuxCmdLength3 = 0x0d,
+        WireInAuxCmdLoop1 = 0x0e,
+        WireInAuxCmdLoop2 = 0x0f,
+        WireInAuxCmdLoop3 = 0x10,
+        WireInLedDisplay = 0x11,
+        WireInDataStreamSel1234 = 0x12,
+        WireInDataStreamSel5678 = 0x13,
+        WireInTtlOut = 0x15,
+
+        TrigInDcmProg = 0x40,
+        TrigInRamWrite = 0x42,
+        TrigInDacThresh = 0x43,
+        TrigInDacHpf = 0x44,
+        TrigInExtFastSettle = 0x45,
+        TrigInExtDigOut = 0x46,
+        TrigInOpenEphys = 0x5a,
+
+        WireOutNumWordsLsb = 0x20,
+        WireOutNumWordsMsb = 0x21,
+
     };
 
     unsigned int numWordsInFifo() override;

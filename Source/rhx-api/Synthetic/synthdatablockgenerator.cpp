@@ -30,8 +30,8 @@
 
 #include <iostream>
 #include <cmath>
-#include "rhxglobals.h"
-#include "abstractrhxcontroller.h"
+#include "../Hardware/rhxglobals.h"
+#include "../Abstract/abstractrhxcontroller.h"
 #include "synthdatablockgenerator.h"
 
 using namespace std;
@@ -289,20 +289,20 @@ void SynthDataBlockGenerator::reset()
 {
     tIndex = 0;
     timeDeficitInNsec = 0.0;
-    timer.start();
+    //timer.start();
 }
 
 // Synthesize a certain number of USB data blocks, if the appropriate time has elapsed, and writes the raw bytes
 // to a buffer.  Return total number of bytes read.
 long SynthDataBlockGenerator::readSynthDataBlocksRaw(int numBlocks, uint8_t* buffer, int numDataStreams)
 {
-    double elapsedTime = (double)timer.nsecsElapsed();
+    double elapsedTime = 0; // (double)timer.nsecsElapsed();
     double targetTime = (double)numBlocks * dataBlockPeriodInNsec;
     double excessTime = elapsedTime - (targetTime - timeDeficitInNsec);
 
     if (excessTime < 0.0) return 0; // Not enough time has passed; wait for the data to be ready
 
-    timer.start();
+    //timer.start();
 
     timeDeficitInNsec = excessTime; // Remember excess time and subtract it from next time meausurement;
                                     // We need to do this to maintain the sample rate accurately.

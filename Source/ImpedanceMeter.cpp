@@ -23,6 +23,9 @@
 
 #include "ImpedanceMeter.h"
 
+#include "rhx-api/Hardware/rhxglobals.h"
+#include "rhx-api/Hardware/rhxdatablock.h"
+
 using namespace RhythmNode;
 
 #define PI  3.14159265359
@@ -59,7 +62,7 @@ ImpedanceMeter::ImpedanceMeter(DeviceThread* board_) :
     const int maxNumBlocks = 120;
     int numStreams = 8;
 
-    allocateDoubleArray3D(amplifierPreFilter, numStreams, 32, MAX_SAMPLES_PER_DATA_BLOCK * maxNumBlocks);
+    //allocateDoubleArray3D(amplifierPreFilter, numStreams, 32, MAX_SAMPLES_PER_DATA_BLOCK * maxNumBlocks);
 }
 
 ImpedanceMeter::~ImpedanceMeter()
@@ -136,19 +139,21 @@ float ImpedanceMeter::updateImpedanceFrequency(float desiredImpedanceFreq, bool&
 }
 
 
-int ImpedanceMeter::loadAmplifierData(std::queue<Rhd2000DataBlock>& dataQueue,
+int ImpedanceMeter::loadAmplifierData(std::deque<RHXDataBlock*>& dataQueue,
     int numBlocks, int numDataStreams)
 {
 
     int block, t, channel, stream;
     int indexAmp = 0;
 
+    bool isUsb3 = board->usbVersion == USB3;
+
     for (block = 0; block < numBlocks; ++block)
     {
 
         // Load and scale RHD2000 amplifier waveforms
         // (sampled at amplifier sampling rate)
-        for (t = 0; t < SAMPLES_PER_DATA_BLOCK(board->evalBoard->isUSB3()); ++t)
+        for (t = 0; t < SAMPLES_PER_DATA_BLOCK(isUsb3); ++t)
         {
             for (channel = 0; channel < 32; ++channel)
             {
@@ -156,13 +161,13 @@ int ImpedanceMeter::loadAmplifierData(std::queue<Rhd2000DataBlock>& dataQueue,
                 {
                     // Amplifier waveform units = microvolts
                     amplifierPreFilter[stream][channel][indexAmp] = 0.195 *
-                        (dataQueue.front().amplifierData[stream][channel][t] - 32768);
+                        (dataQueue.front()->amplifierData(stream, channel, t) - 32768);
                 }
             }
             ++indexAmp;
         }
-        // We are done with this Rhd2000DataBlock object; remove it from dataQueue
-        dataQueue.pop();
+        // We are done with this RHXDataBlock object; remove it from dataQueue
+        dataQueue.pop_front();
     }
 
     return 0;
@@ -184,8 +189,10 @@ void ImpedanceMeter::measureComplexAmplitude(
     int startIndex = 0;
     int endIndex = startIndex + numPeriods * period - 1;
 
+    bool isUsb3 = board->usbVersion == USB3;
+
     // Move the measurement window to the end of the waveform to ignore start-up transient.
-    while (endIndex < SAMPLES_PER_DATA_BLOCK(board->evalBoard->isUSB3()) * numBlocks - period)
+    while (endIndex < SAMPLES_PER_DATA_BLOCK(isUsb3) * numBlocks - period)
     {
         startIndex += period;
         endIndex += period;
@@ -266,10 +273,16 @@ void ImpedanceMeter::empiricalResistanceCorrection(double& impedanceMagnitude, d
 }
 
 
+void ImpedanceMeter::setFrequency(double frequency_)
+{
+    frequency = frequency_;
+}
+
+
 void ImpedanceMeter::run()
 {
 
-    runImpedanceMeasurement(board->impedances);
+    runImpedanceMeasurement(board->impedances, frequency);
     
     restoreBoardSettings();
 
@@ -281,29 +294,25 @@ void ImpedanceMeter::run()
 
 #define CHECK_EXIT if (threadShouldExit()) return
 
-void ImpedanceMeter::runImpedanceMeasurement(Impedances& impedances)
+void ImpedanceMeter::runImpedanceMeasurement(Impedances& impedances, double frequency)
 {
     int commandSequenceLength, stream, channel, capRange;
     double cSeries;
-    std::vector<int> commandList;
 
     setProgress(0.0f);
 
-    int numdataStreams = board->evalBoard->getNumEnabledDataStreams();
+    AbstractRHXController* device = board->device.get();
+
+    bool isUsb3 = board->usbVersion == USB3;
+
+    int numdataStreams = board->device->getNumEnabledDataStreams();
 
     bool rhd2164ChipPresent = false;
     int chOffset;
 
-    Array<int> enabledStreams;
-
     for (stream = 0; stream < MAX_NUM_DATA_STREAMS; ++stream)
     {
         CHECK_EXIT;
-
-        if (board->evalBoard->isStreamEnabled(stream))
-        {
-            enabledStreams.add(stream);
-        }
 
         if (board->chipId[stream] == CHIP_ID_RHD2164_B)
         {
@@ -312,45 +321,38 @@ void ImpedanceMeter::runImpedanceMeasurement(Impedances& impedances)
     }
 
     bool validImpedanceFreq;
-    float actualImpedanceFreq = updateImpedanceFrequency(1000.0, validImpedanceFreq);
+    float actualImpedanceFreq = updateImpedanceFrequency(frequency, validImpedanceFreq);
 
     if (!validImpedanceFreq)
     {
         return;
     }
     
+    chipRegisters.reset();
+    chipRegisters = std::make_unique<RHXRegisters>(device->getType(), device->getSampleRate());
+
+    std::vector<unsigned int> commandList;
+    
+    commandSequenceLength = chipRegisters->createCommandListZcheckDac(commandList, frequency, 128.0);
+    
+    device->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 1);
+
+    device->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, commandSequenceLength - 1);
+
+    if (device->getType() != ControllerStimRecordUSB2) {
+        device->selectAuxCommandBankAllPorts(AbstractRHXController::AuxCmd1, 1);
+    }
+    
     // Create a command list for the AuxCmd1 slot.
-    commandSequenceLength = board->chipRegisters.createCommandListZcheckDac(commandList, actualImpedanceFreq, 128.0);
+    commandSequenceLength = chipRegisters->createCommandListZcheckDac(commandList, actualImpedanceFreq, 128.0);
     CHECK_EXIT;
-    board->evalBoard->uploadCommandList(commandList, Rhd2000EvalBoard::AuxCmd1, 1);
-    board->evalBoard->selectAuxCommandLength(Rhd2000EvalBoard::AuxCmd1,
+    device->uploadCommandList(commandList, AbstractRHXController::AuxCmd1, 1);
+    device->selectAuxCommandLength(AbstractRHXController::AuxCmd1,
         0, commandSequenceLength - 1);
 
     if (board->settings.fastTTLSettleEnabled)
     {
-        board->evalBoard->enableExternalFastSettle(false);
-    }
-
-    CHECK_EXIT;
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortA,
-        Rhd2000EvalBoard::AuxCmd1, 1);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortB,
-        Rhd2000EvalBoard::AuxCmd1, 1);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortC,
-        Rhd2000EvalBoard::AuxCmd1, 1);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortD,
-        Rhd2000EvalBoard::AuxCmd1, 1);
-
-    if (board->boardType == RHD_RECORDING_CONTROLLER)
-    {
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortE,
-            Rhd2000EvalBoard::AuxCmd1, 1);
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortF,
-            Rhd2000EvalBoard::AuxCmd1, 1);
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortG,
-            Rhd2000EvalBoard::AuxCmd1, 1);
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortH,
-            Rhd2000EvalBoard::AuxCmd1, 1);
+        board->device->enableExternalFastSettle(false);
     }
 
     // Select number of periods to measure impedance over
@@ -361,43 +363,50 @@ void ImpedanceMeter::runImpedanceMeasurement(Impedances& impedances)
     if (numBlocks < 2) numBlocks = 2;   // need first block for command to switch channels to take effect.
 
     CHECK_EXIT;
-    board->settings.dsp.cutoffFreq = board->chipRegisters.setDspCutoffFreq(board->settings.dsp.cutoffFreq);
-    board->settings.dsp.lowerBandwidth = board->chipRegisters.setLowerBandwidth(board->settings.dsp.lowerBandwidth);
-    board->settings.dsp.upperBandwidth = board->chipRegisters.setUpperBandwidth(board->settings.dsp.upperBandwidth);
-    board->chipRegisters.enableDsp(board->settings.dsp.enabled);
-    board->chipRegisters.enableZcheck(true);
+    board->settings.dsp.cutoffFreq = chipRegisters->setDspCutoffFreq(board->settings.dsp.cutoffFreq);
+    board->settings.dsp.lowerBandwidth = chipRegisters->setLowerBandwidth(board->settings.dsp.lowerBandwidth);
+    board->settings.dsp.upperBandwidth = chipRegisters->setUpperBandwidth(board->settings.dsp.upperBandwidth);
+    chipRegisters->enableDsp(board->settings.dsp.enabled);
+    chipRegisters->enableZcheck(true);
     
-    commandSequenceLength = board->chipRegisters.createCommandListRegisterConfig(commandList, false);
-    CHECK_EXIT;
-    // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
-    board->evalBoard->uploadCommandList(commandList, Rhd2000EvalBoard::AuxCmd3, 3);
-    board->evalBoard->selectAuxCommandLength(Rhd2000EvalBoard::AuxCmd3, 0, commandSequenceLength - 1);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortA, Rhd2000EvalBoard::AuxCmd3, 3);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortB, Rhd2000EvalBoard::AuxCmd3, 3);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortC, Rhd2000EvalBoard::AuxCmd3, 3);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortD, Rhd2000EvalBoard::AuxCmd3, 3);
-
-    if (board->boardType == RHD_RECORDING_CONTROLLER)
-    {
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortE, Rhd2000EvalBoard::AuxCmd3, 3);
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortF, Rhd2000EvalBoard::AuxCmd3, 3);
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortG, Rhd2000EvalBoard::AuxCmd3, 3);
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortH, Rhd2000EvalBoard::AuxCmd3, 3);
+    if (device->getType() == ControllerStimRecordUSB2) {
+        commandSequenceLength = chipRegisters->createCommandListRHSRegisterConfig(commandList, false);
+    }
+    else {
+        commandSequenceLength = chipRegisters->createCommandListRHDRegisterConfig(commandList, false,
+            RHXDataBlock::samplesPerDataBlock(device->getType()));
     }
 
     CHECK_EXIT;
-    board->evalBoard->setContinuousRunMode(false);
-    board->evalBoard->setMaxTimeStep(SAMPLES_PER_DATA_BLOCK(board->evalBoard->isUSB3()) * numBlocks);
+    // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
+    device->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 3);
+    device->selectAuxCommandLength(AbstractRHXController::AuxCmd3, 0, commandSequenceLength - 1);
+    device->selectAuxCommandBank(PortA, AbstractRHXController::AuxCmd3, 3);
+    device->selectAuxCommandBank(PortB, AbstractRHXController::AuxCmd3, 3);
+    device->selectAuxCommandBank(PortC, AbstractRHXController::AuxCmd3, 3);
+    device->selectAuxCommandBank(PortD, AbstractRHXController::AuxCmd3, 3);
+
+    if (board->boardType == RHD_RECORDING_CONTROLLER)
+    {
+        device->selectAuxCommandBank(PortE, AbstractRHXController::AuxCmd3, 3);
+        device->selectAuxCommandBank(PortF, AbstractRHXController::AuxCmd3, 3);
+        device->selectAuxCommandBank(PortG, AbstractRHXController::AuxCmd3, 3);
+        device->selectAuxCommandBank(PortH, AbstractRHXController::AuxCmd3, 3);
+    }
+
+    CHECK_EXIT;
+    device->setContinuousRunMode(false);
+    device->setMaxTimeStep(SAMPLES_PER_DATA_BLOCK(isUsb3) * numBlocks);
 
     // Create matrices of doubles of size (numStreams x 32 x 3) to store complex amplitudes
     // of all amplifier channels (32 on each data stream) at three different Cseries values.
     std::vector<std::vector<std::vector<double>>>  measuredMagnitude;
     std::vector<std::vector<std::vector<double>>>  measuredPhase;
 
-    measuredMagnitude.resize(board->evalBoard->getNumEnabledDataStreams());
-    measuredPhase.resize(board->evalBoard->getNumEnabledDataStreams());
+    measuredMagnitude.resize(device->getNumEnabledDataStreams());
+    measuredPhase.resize(device->getNumEnabledDataStreams());
 
-    for (int i = 0; i < board->evalBoard->getNumEnabledDataStreams(); ++i)
+    for (int i = 0; i < device->getNumEnabledDataStreams(); ++i)
     {
         measuredMagnitude[i].resize(32);
         measuredPhase[i].resize(32);
@@ -430,15 +439,15 @@ void ImpedanceMeter::runImpedanceMeasurement(Impedances& impedances)
         switch (capRange)
         {
         case 0:
-            board->chipRegisters.setZcheckScale(Rhd2000Registers::ZcheckCs100fF);
+            chipRegisters->setZcheckScale(RHXRegisters::ZcheckCs100fF);
             cSeries = 0.1e-12;
             break;
         case 1:
-            board->chipRegisters.setZcheckScale(Rhd2000Registers::ZcheckCs1pF);
+            chipRegisters->setZcheckScale(RHXRegisters::ZcheckCs1pF);
             cSeries = 1.0e-12;
             break;
         case 2:
-            board->chipRegisters.setZcheckScale(Rhd2000Registers::ZcheckCs10pF);
+            chipRegisters->setZcheckScale(RHXRegisters::ZcheckCs10pF);
             cSeries = 10.0e-12;
             break;
         }
@@ -449,19 +458,25 @@ void ImpedanceMeter::runImpedanceMeasurement(Impedances& impedances)
 
             CHECK_EXIT;
    
-            board->chipRegisters.setZcheckChannel(channel);
-            commandSequenceLength =
-                board->chipRegisters.createCommandListRegisterConfig(commandList, false);
-            // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
-            board->evalBoard->uploadCommandList(commandList, Rhd2000EvalBoard::AuxCmd3, 3);
+            chipRegisters->setZcheckChannel(channel);
 
-            board->evalBoard->run();
-            while (board->evalBoard->isRunning())
+            if (device->getType() == ControllerStimRecordUSB2) {
+                commandSequenceLength = chipRegisters->createCommandListRHSRegisterConfig(commandList, false);
+            }
+            else {
+                commandSequenceLength = chipRegisters->createCommandListRHDRegisterConfig(commandList, false,
+                    RHXDataBlock::samplesPerDataBlock(device->getType()));
+            }
+            // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
+            device->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 3);
+
+            device->run();
+            while (device->isRunning())
             {
 
             }
-            std::queue<Rhd2000DataBlock> dataQueue;
-            board->evalBoard->readDataBlocks(numBlocks, dataQueue);
+            std::deque<RHXDataBlock*> dataQueue;
+            device->readDataBlocks(numBlocks, dataQueue);
             loadAmplifierData(dataQueue, numBlocks, numdataStreams);
 
             for (stream = 0; stream < numdataStreams; ++stream)
@@ -484,21 +499,27 @@ void ImpedanceMeter::runImpedanceMeasurement(Impedances& impedances)
             if (rhd2164ChipPresent)
             {
                 CHECK_EXIT;
-                board->chipRegisters.setZcheckChannel(channel + 32); // address channels 32-63
-                commandSequenceLength =
-                    board->chipRegisters.createCommandListRegisterConfig(commandList, false);
+                chipRegisters->setZcheckChannel(channel + 32); // address channels 32-63
+                
+                if (device->getType() == ControllerStimRecordUSB2) {
+                    commandSequenceLength = chipRegisters->createCommandListRHSRegisterConfig(commandList, false);
+                }
+                else {
+                    commandSequenceLength = chipRegisters->createCommandListRHDRegisterConfig(commandList, false,
+                        RHXDataBlock::samplesPerDataBlock(device->getType()));
+                }
                 // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
-                board->evalBoard->uploadCommandList(commandList, Rhd2000EvalBoard::AuxCmd3, 3);
+                device->uploadCommandList(commandList, AbstractRHXController::AuxCmd3, 3);
 
-                board->evalBoard->run();
-                while (board->evalBoard->isRunning())
+                device->run();
+                while (device->isRunning())
                 {
 
                 }
-                board->evalBoard->readDataBlocks(numBlocks, dataQueue);
+                device->readDataBlocks(numBlocks, dataQueue);
                 loadAmplifierData(dataQueue, numBlocks, numdataStreams);
 
-                for (stream = 0; stream < board->evalBoard->getNumEnabledDataStreams(); ++stream)
+                for (stream = 0; stream < device->getNumEnabledDataStreams(); ++stream)
                 {
                     if (board->chipId[stream] == CHIP_ID_RHD2164_B)
                     {
@@ -516,7 +537,7 @@ void ImpedanceMeter::runImpedanceMeasurement(Impedances& impedances)
     impedances.magnitudes.clear();
     impedances.phases.clear();
 
-    for (stream = 0; stream < board->evalBoard->getNumEnabledDataStreams(); ++stream)
+    for (stream = 0; stream < device->getNumEnabledDataStreams(); ++stream)
     {
         if ((board->chipId[stream] == CHIP_ID_RHD2132) && (board->numChannelsPerDataStream[stream] == 16))
             chOffset = RHD2132_16CH_OFFSET;
@@ -570,7 +591,7 @@ void ImpedanceMeter::runImpedanceMeasurement(Impedances& impedances)
                 empiricalResistanceCorrection(impedanceMagnitude, impedancePhase,
                     board->settings.boardSampleRate);
 
-                impedances.streams.add(enabledStreams[stream]);
+                impedances.streams.add(board->enabledStreams[stream]);
                 impedances.channels.add(channel + chOffset);
                 impedances.magnitudes.add(impedanceMagnitude);
                 impedances.phases.add(impedancePhase);
@@ -590,50 +611,53 @@ void ImpedanceMeter::runImpedanceMeasurement(Impedances& impedances)
 
 void ImpedanceMeter::restoreBoardSettings()
 {
-    board->evalBoard->setContinuousRunMode(false);
-    board->evalBoard->setMaxTimeStep(0);
-    board->evalBoard->flush();
+
+    AbstractRHXController* device = board->device.get();
+
+    device->setContinuousRunMode(false);
+    device->setMaxTimeStep(0);
+    device->flush();
 
     // Switch back to flatline
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortA, Rhd2000EvalBoard::AuxCmd1, 0);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortB, Rhd2000EvalBoard::AuxCmd1, 0);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortC, Rhd2000EvalBoard::AuxCmd1, 0);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortD, Rhd2000EvalBoard::AuxCmd1, 0);
+    device->selectAuxCommandBank(PortA, AbstractRHXController::AuxCmd1, 0);
+    device->selectAuxCommandBank(PortB, AbstractRHXController::AuxCmd1, 0);
+    device->selectAuxCommandBank(PortC, AbstractRHXController::AuxCmd1, 0);
+    device->selectAuxCommandBank(PortD, AbstractRHXController::AuxCmd1, 0);
 
     if (board->boardType == RHD_RECORDING_CONTROLLER)
     {
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortE, Rhd2000EvalBoard::AuxCmd3, 3);
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortF, Rhd2000EvalBoard::AuxCmd3, 3);
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortG, Rhd2000EvalBoard::AuxCmd3, 3);
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortH, Rhd2000EvalBoard::AuxCmd3, 3);
+        device->selectAuxCommandBank(PortE, AbstractRHXController::AuxCmd3, 3);
+        device->selectAuxCommandBank(PortF, AbstractRHXController::AuxCmd3, 3);
+        device->selectAuxCommandBank(PortG, AbstractRHXController::AuxCmd3, 3);
+        device->selectAuxCommandBank(PortH, AbstractRHXController::AuxCmd3, 3);
     }
     
-    board->evalBoard->selectAuxCommandLength(Rhd2000EvalBoard::AuxCmd1, 0, 1);
+    device->selectAuxCommandLength(AbstractRHXController::AuxCmd1, 0, 1);
 
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortA, Rhd2000EvalBoard::AuxCmd3,
+    device->selectAuxCommandBank(PortA, AbstractRHXController::AuxCmd3,
         board->settings.fastSettleEnabled ? 2 : 1);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortB, Rhd2000EvalBoard::AuxCmd3,
+    device->selectAuxCommandBank(PortB, AbstractRHXController::AuxCmd3,
         board->settings.fastSettleEnabled ? 2 : 1);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortC, Rhd2000EvalBoard::AuxCmd3,
+    device->selectAuxCommandBank(PortC, AbstractRHXController::AuxCmd3,
         board->settings.fastSettleEnabled ? 2 : 1);
-    board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortD, Rhd2000EvalBoard::AuxCmd3,
+    device->selectAuxCommandBank(PortD, AbstractRHXController::AuxCmd3,
         board->settings.fastSettleEnabled ? 2 : 1);
 
     if (board->boardType == RHD_RECORDING_CONTROLLER)
     {
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortE, Rhd2000EvalBoard::AuxCmd3,
+        device->selectAuxCommandBank(PortE, AbstractRHXController::AuxCmd3,
             board->settings.fastSettleEnabled ? 2 : 1);
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortF, Rhd2000EvalBoard::AuxCmd3,
+        device->selectAuxCommandBank(PortF, AbstractRHXController::AuxCmd3,
             board->settings.fastSettleEnabled ? 2 : 1);
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortG, Rhd2000EvalBoard::AuxCmd3,
+        device->selectAuxCommandBank(PortG, AbstractRHXController::AuxCmd3,
             board->settings.fastSettleEnabled ? 2 : 1);
-        board->evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortH, Rhd2000EvalBoard::AuxCmd3,
+        device->selectAuxCommandBank(PortH, AbstractRHXController::AuxCmd3,
             board->settings.fastSettleEnabled ? 2 : 1);
     }
 
     if (board->settings.fastTTLSettleEnabled)
     {
-        board->evalBoard->enableExternalFastSettle(true);
+        device->enableExternalFastSettle(true);
     }
 }
 

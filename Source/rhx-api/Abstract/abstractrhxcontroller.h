@@ -39,8 +39,6 @@
 #include <deque>
 #include <mutex>
 
-using namespace std;
-
 enum AcquisitionMode {
     LiveMode,
     SyntheticMode,
@@ -110,16 +108,16 @@ public:
     static double getSampleRate(AmplifierSampleRate sampleRate_);
     static int numAnalogIO(ControllerType type_, bool expanderConnected_);
     static int numDigitalIO(ControllerType type_, bool expanderConnected_);
-    static string getAnalogInputChannelName(ControllerType type_, int channel_);
-    static string getAnalogOutputChannelName(ControllerType type_, int channel_);
-    static string getDigitalInputChannelName(ControllerType type_, int channel_);
-    static string getDigitalOutputChannelName(ControllerType type_, int channel_);
-    static string getAnalogIOChannelNumber(ControllerType type_, int channel_);
-    static string getDigitalIOChannelNumber(ControllerType type_, int channel_);
+    static std::string getAnalogInputChannelName(ControllerType type_, int channel_);
+    static std::string getAnalogOutputChannelName(ControllerType type_, int channel_);
+    static std::string getDigitalInputChannelName(ControllerType type_, int channel_);
+    static std::string getDigitalOutputChannelName(ControllerType type_, int channel_);
+    static std::string getAnalogIOChannelNumber(ControllerType type_, int channel_);
+    static std::string getDigitalIOChannelNumber(ControllerType type_, int channel_);
 
-    static string getBoardTypeString(ControllerType type_);
-    static string getSampleRateString(AmplifierSampleRate sampleRate);
-    static string getStimStepSizeString(StimStepSize stepSize);
+    static std::string getBoardTypeString(ControllerType type_);
+    static std::string getSampleRateString(AmplifierSampleRate sampleRate);
+    static std::string getStimStepSizeString(StimStepSize stepSize);
     static AmplifierSampleRate nearestSampleRate(double rate, double percentTolerance = 1.0);
     static StimStepSize nearestStimStepSize(double step, double percentTolerance = 1.0);
 
@@ -128,7 +126,7 @@ public:
     unsigned int getLastNumWordsInFifo(bool& hasBeenUpdated);
     unsigned int fifoCapacityInWords();
 
-    void printCommandList(const vector<unsigned int> &commandList) const;
+    void printCommandList(const std::vector<unsigned int> &commandList) const;
 
     void setCableLengthMeters(BoardPort port, double lengthInMeters);
     void setCableLengthFeet(BoardPort port, double lengthInFeet);
@@ -137,20 +135,20 @@ public:
 
     int getNumEnabledDataStreams() const;
     int getCableDelay(BoardPort port) const;
-    void getCableDelay(vector<int> &delays) const;
+    void getCableDelay(std::vector<int> &delays) const;
 
     void setAllDacsToZero();
 
     void configureStimTrigger(int stream, int channel, int triggerSource, bool triggerEnabled, bool edgeTriggered, bool triggerOnLow);
     void configureStimPulses(int stream, int channel, int numPulses, StimShape shape, bool negStimFirst);
 
-    StreamChannelPair streamChannelFromWaveName(const string& waveName) const;
+    StreamChannelPair streamChannelFromWaveName(const std::string& waveName) const;
 
     virtual bool isSynthetic() const = 0;
     virtual bool isPlayback() const = 0;
     virtual AcquisitionMode acquisitionMode() const = 0;
-    virtual int open(const string& boardSerialNumber) = 0;
-    virtual bool uploadFPGABitfile(const string& filename) = 0;
+    virtual int open(const std::string& boardSerialNumber) = 0;
+    virtual bool uploadFPGABitfile(const std::string& filename) = 0;
     virtual void resetBoard() = 0;
 
     virtual void run() = 0;
@@ -159,7 +157,7 @@ public:
     virtual void resetFpga() = 0;
 
     virtual bool readDataBlock(RHXDataBlock *dataBlock) = 0;
-    virtual bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) = 0;
+    virtual bool readDataBlocks(int numBlocks, std::deque<RHXDataBlock*> &dataQueue) = 0;
     virtual long readDataBlocksRaw(int numBlocks, uint8_t* buffer) = 0;
 
     virtual void setContinuousRunMode(bool continuousMode) = 0;
@@ -169,6 +167,8 @@ public:
     virtual void setDataSource(int stream, BoardDataSource dataSource) = 0;
     virtual void setTtlOut(const int* ttlOutArray) = 0;
     virtual void setDacManual(int value) = 0;
+    virtual void setClockDivider(int divide_factor) = 0;
+    virtual void enableLeds(bool ledsOn) = 0;
     virtual void setLedDisplay(const int* ledArray) = 0;
     virtual void setSpiLedDisplay(const int* ledArray) = 0;
     virtual void setDacGain(int gain) = 0;
@@ -211,22 +211,22 @@ public:
     virtual void clearTtlOut() = 0;
     virtual void resetSequencers() = 0;
     virtual void programStimReg(int stream, int channel, StimRegister reg, int value) = 0;
-    virtual void uploadCommandList(const vector<unsigned int> &commandList, AuxCmdSlot auxCommandSlot, int bank) = 0;
+    virtual void uploadCommandList(const std::vector<unsigned int> &commandList, AuxCmdSlot auxCommandSlot, int bank) = 0;
 
-    virtual int findConnectedChips(vector<ChipType> &chipType, vector<int> &portIndex, vector<int> &commandStream,
-                                   vector<int> &numChannelsOnPort) = 0;
+    virtual int findConnectedChips(std::vector<ChipType> &chipType, std::vector<int> &portIndex, std::vector<int> &commandStream,
+                                   std::vector<int> &numChannelsOnPort) = 0;
 
 protected:
     ControllerType type;
     AmplifierSampleRate sampleRate;
     unsigned int usbBufferSize;
     int numDataStreams; // total number of data streams currently enabled
-    vector<bool> dataStreamEnabled;
-    vector<BoardDataSource> boardDataSources; // used by ControllerRecordUSB2 only
-    vector<int> cableDelay;
+    std::vector<bool> dataStreamEnabled;
+    std::vector<BoardDataSource> boardDataSources; // used by ControllerRecordUSB2 only
+    std::vector<int> cableDelay;
 
     // Methods in this class are designed to be thread-safe.  This variable is used to ensure that.
-    mutex okMutex;
+    std::mutex okMutex;
 
     unsigned int lastNumWordsInFifo;
     bool numWordsHasBeenUpdated;

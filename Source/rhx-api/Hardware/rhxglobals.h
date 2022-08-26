@@ -31,14 +31,14 @@
 #ifndef RHXGLOBALS_H
 #define RHXGLOBALS_H
 
-#include <QString>
-
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 
-const QString OrganizationName = "Intan Technologies";
-const QString OrganizationDomain = "intantech.com";
-const QString ApplicationName = "IntanRHX";
-const QString ApplicationCopyrightYear = "2020-2022";
+#include <string>
+
+const std::string OrganizationName = "Intan Technologies";
+const std::string OrganizationDomain = "intantech.com";
+const std::string ApplicationName = "IntanRHX";
+const std::string ApplicationCopyrightYear = "2020-2022";
 
 const int GRADIENTWIDTH = 300;
 const int GRADIENTHEIGHT = 10;
@@ -51,41 +51,25 @@ const int HASHMARKLENGTH = 5;
 #define SOFTWARE_SECONDARY_VERSION_NUMBER 0
 #define SOFTWARE_TERTIARY_VERSION_NUMBER 6
 
-const QString SoftwareVersion = QString::number(SOFTWARE_MAIN_VERSION_NUMBER) + "." +
-                                QString::number(SOFTWARE_SECONDARY_VERSION_NUMBER) + "." +
-                                QString::number(SOFTWARE_TERTIARY_VERSION_NUMBER);
+const std::string SoftwareVersion = std::to_string(SOFTWARE_MAIN_VERSION_NUMBER) + "." +
+                            std::to_string(SOFTWARE_SECONDARY_VERSION_NUMBER) + "." +
+                            std::to_string(SOFTWARE_TERTIARY_VERSION_NUMBER);
 
 // FPGA configuration bitfiles
-const QString ConfigFileRHDBoard = "ConfigRHDInterfaceBoard.bit";
-const QString ConfigFileRHDController = "ConfigRHDController.bit";
-const QString ConfigFileRHSController = "ConfigRHSController.bit";
-const QString ConfigFileXEM6010Tester = "ConfigXEM6010Tester.bit";
+const std::string ConfigFileRHDBoard = "ConfigRHDInterfaceBoard.bit";
+const std::string ConfigFileRHDController = "ConfigRHDController.bit";
+const std::string ConfigFileRHSController = "ConfigRHSController.bit";
+const std::string ConfigFileXEM6010Tester = "ConfigXEM6010Tester.bit";
 
-// Special Unicode characters, as QString data type
-const QString DeltaSymbol = QString((QChar)0x0394);
-const QString MuSymbol = QString((QChar)0x03bc);
-const QString MicroVoltsSymbol = MuSymbol + QString("V");
-const QString MicroAmpsSymbol = MuSymbol + QString("A");
-const QString MicroSecondsSymbol = MuSymbol + QString("s");
-const QString OmegaSymbol = QString((QChar)0x03a9);
-const QString AngleSymbol = QString((QChar)0x2220);
-const QString DegreeSymbol = QString((QChar)0x00b0);
-const QString PlusMinusSymbol = QString((QChar)0x00b1);
-const QString SqrtSymbol = QString((QChar)0x221a);
-const QString EnDashSymbol = QString((QChar)0x2013);
-const QString EmDashSymbol = QString((QChar)0x2014);
-const QString EllipsisSymbol = QString((QChar)0x2026);
-const QString CopyrightSymbol = QString((QChar)0x00a9);
-
-const QString MuSymbolTCP = QString::fromStdWString(L"\u00b5");
-const QString PlusMinusSymbolTCP = QString::fromStdWString(L"\u00b1");
-
-const QString EndOfLine = QString("\n");
+const std::string EndOfLine = std::string("\n");
 
 enum ControllerType {
     ControllerRecordUSB2 = 0,
     ControllerRecordUSB3 = 1,
-    ControllerStimRecordUSB2 = 2
+    ControllerStimRecordUSB2 = 2,
+    ControllerOEOpalKellyUSB2 = 3,
+    ControllerOEOpalKellyUSB3 = 4,
+    ControllerOEECP5 = 5
 };
 
 enum DemoSelections {
@@ -95,13 +79,13 @@ enum DemoSelections {
     DemoPlayback
 };
 
-const QString ControllerTypeString[3] = {
+const std::string ControllerTypeString[3] = {
     "RHD USB Interface Board",
     "RHD Recording Controller",
     "RHS Stimulation/Recording Controller"
 };
 
-const QString ControllerTypeSettingsGroup[3] = {
+const std::string ControllerTypeSettingsGroup[3] = {
     "RHDUSBInterfaceBoard",
     "RHDRecordingController",
     "RHSStimRecordingController"
@@ -127,7 +111,7 @@ enum AmplifierSampleRate {
     SampleRate30000Hz = 16
 };
 
-const QString SampleRateString[17] = {
+const std::string SampleRateString[17] = {
     "1.0 kHz",
     "1.25 kHz",
     "1.5 kHz",
@@ -162,7 +146,7 @@ enum StimStepSize {
     StimStepSizeMax = 11
 };
 
-const QString StimStepSizeString[12] = {
+/*const std::string StimStepSizeString[12] = {
     "minimum step size (imprecise)",
     PlusMinusSymbol + "2.55 " + MicroAmpsSymbol + " range (10 nA step size)",
     PlusMinusSymbol + "5.10 " + MicroAmpsSymbol + " range (20 nA step size)",
@@ -175,7 +159,7 @@ const QString StimStepSizeString[12] = {
     PlusMinusSymbol + "1.275 mA range (5 " + MicroAmpsSymbol + " step size)",
     PlusMinusSymbol + "2.550 mA range (10 " + MicroAmpsSymbol + " step size)",
     "maximum step size (imprecise)"
-};
+};*/
 
 enum BoardPort {
     PortA = 0,
@@ -302,12 +286,12 @@ const uint32_t TCPWaveformMagicNumber = 0x2ef07a08;
 const uint32_t TCPSpikeMagicNumber = 0x3ae2710f;
 
 // Parameter setting error messages
-const QString ReadOnlyErrorMessage = "cannot be changed once software has started.";
-const QString RunningErrorMessage = "cannot be set while controller is running.";
-const QString RecordingErrorMessage = "cannot be set while controller is recording.";
-const QString NonStimErrorMessage = "cannot be set with a non-stim controller";
-const QString NonStimRunningErrorMessage = "cannot be set with a non-stim controller, or while controller is running";
-const QString StimErrorMessage = "cannot be set with a stim controller";
-const QString StimRunningErrorMessage = "cannot be set with a stim controller, or while controller is running";
+const std::string ReadOnlyErrorMessage = "cannot be changed once software has started.";
+const std::string RunningErrorMessage = "cannot be set while controller is running.";
+const std::string RecordingErrorMessage = "cannot be set while controller is recording.";
+const std::string NonStimErrorMessage = "cannot be set with a non-stim controller";
+const std::string NonStimRunningErrorMessage = "cannot be set with a non-stim controller, or while controller is running";
+const std::string StimErrorMessage = "cannot be set with a stim controller";
+const std::string StimRunningErrorMessage = "cannot be set with a stim controller, or while controller is running";
 
 #endif // RHXGLOBALS_H

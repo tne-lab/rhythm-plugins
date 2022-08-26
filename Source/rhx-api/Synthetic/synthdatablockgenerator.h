@@ -31,14 +31,12 @@
 #ifndef SYNTHDATABLOCKGENERATOR_H
 #define SYNTHDATABLOCKGENERATOR_H
 
-#include "abstractrhxcontroller.h"
+#include "../Abstract/abstractrhxcontroller.h"
 #include "randomnumber.h"
-#include "rhxdatablock.h"
-#include <QElapsedTimer>
+#include "../Hardware/rhxdatablock.h"
+//#include <QElapsedTimer>
 #include <cstdint>
 #include <vector>
-
-using namespace std;
 
 class AbstractSynthSource
 {
@@ -65,11 +63,11 @@ public:
 
 private:
     int nUnits;
-    vector<double> spikeAmplitude;
-    vector<double> spikeDurationMsec;
-    vector<double> spikeRateHz;
-    vector<bool> firing;
-    vector<double> spikeTimeMsec;
+    std::vector<double> spikeAmplitude;
+    std::vector<double> spikeDurationMsec;
+    std::vector<double> spikeRateHz;
+    std::vector<bool> firing;
+    std::vector<double> spikeTimeMsec;
 
     const double NoiseRMSLevelMicroVolts = 5.0;  // 5 uV rms typical cortical background noise
     const double SpikeRefractoryPeriodMsec = 5.0;
@@ -129,12 +127,12 @@ private:
     RandomNumber* randomGenerator;
     uint16_t* usbWords;
     uint32_t tIndex;
-    QElapsedTimer timer;
+    //QElapsedTimer timer;
     double dataBlockPeriodInNsec;
     double timeDeficitInNsec;
-    vector<vector<AbstractSynthSource*> > synthSources;
-    vector<ADCSynthSource*> adcSynthSources;
-    vector<DigitalSynthSource*> digitalSynthSources;
+    std::vector<std::vector<AbstractSynthSource*> > synthSources;
+    std::vector<ADCSynthSource*> adcSynthSources;
+    std::vector<DigitalSynthSource*> digitalSynthSources;
 
     uint16_t auxInSample;
     uint16_t vddSample;

@@ -31,11 +31,6 @@
 #include <array>
 #include <atomic>
 
-#include "rhythm-api/rhd2000evalboard.h"
-#include "rhythm-api/rhd2000registers.h"
-#include "rhythm-api/rhd2000datablock.h"
-#include "rhythm-api/okFrontPanelDLL.h"
-
 #include "DeviceThread.h"
 
 namespace RhythmNode
@@ -61,7 +56,7 @@ namespace RhythmNode
 	public:
 
 		/** Constructor */
-		Headstage(Rhd2000EvalBoard::BoardDataSource dataSource);
+		Headstage(int headstageIndex, int maxNumHeadstages);
 
 		/** Destructor*/
 		~Headstage() { }
@@ -105,8 +100,8 @@ namespace RhythmNode
 		/** Returns true if the headstage is connected*/
 		bool isConnected() const;
 
-		/** Returns the BoardDataSource object for a given index*/
-		Rhd2000EvalBoard::BoardDataSource getDataStream(int index) const;
+		/** Returns the stream number for a given index*/
+		int getDataStream(int index) const;
 
 		/** Sets the number of half-channels; mainly used for the 16-ch RHD2132 board */
 		void setHalfChannels(bool half); 
@@ -127,7 +122,8 @@ namespace RhythmNode
 		bool hasImpedanceData() const { return impedanceMagnitudes.size() > 0; }
 
 	private:
-		Rhd2000EvalBoard::BoardDataSource dataSource;
+		int headstageIndex;
+		int maxNumHeadstages;
 
 		int streamIndex;
 		int firstChannelIndex;

@@ -214,7 +214,7 @@ DeviceEditor::DeviceEditor(GenericProcessor* parentNode,
 void DeviceEditor::measureImpedance()
 {
 
-    board->runImpedanceTest();
+    board->runImpedanceTest(1000.0);
 
     CoreServices::updateSignalChain(this);
 }

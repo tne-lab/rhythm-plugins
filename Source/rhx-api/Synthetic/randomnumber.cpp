@@ -28,8 +28,6 @@
 //
 //------------------------------------------------------------------------------
 
-#include <QTime>
-#include <QRandomGenerator>
 #include <cmath>
 #include "randomnumber.h"
 
@@ -40,7 +38,7 @@ RandomNumber::RandomNumber()
     // unsigned int seed = QTime::currentTime().msec();
     unsigned int seed = 4;
 
-    generator = new QRandomGenerator(seed);
+    //generator = new QRandomGenerator(seed);
 
     // Initialize parameters for Gaussian distribution approximator.
     setGaussianAccuracy(6);
@@ -54,13 +52,14 @@ RandomNumber::~RandomNumber()
 // Return a random number from a uniform distribution between 0.0 and 1.0.
 double RandomNumber::randomUniform()
 {
-    return generator->generateDouble();
+    return 0.0; // generator->generateDouble();
 }
 
 // Return a random number from a uniform distribution between min and max.
 double RandomNumber::randomUniform(double min, double max)
 {
-    return(generator->generateDouble() * (max - min) + min);
+    //return(generator->generateDouble() * (max - min) + min);
+    return 0.0;
 }
 
 // Return a random number from a uniform logarithmic-scale distribution between min and max.
@@ -69,7 +68,8 @@ double RandomNumber::randomLogUniform(double min, double max)
 {
     double logMin = log(min);
     double logMax = log(max);
-    double logResult = generator->generateDouble() * (logMax - logMin) + logMin;
+    //double logResult = generator->generateDouble() * (logMax - logMin) + logMin;
+    double logResult = 0;
     return exp(logResult);
 }
 

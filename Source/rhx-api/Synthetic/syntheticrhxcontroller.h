@@ -32,7 +32,9 @@
 #define SYNTHETICRHXCONTROLLER_H
 
 #include "synthdatablockgenerator.h"
-#include "abstractrhxcontroller.h"
+#include "../Abstract/abstractrhxcontroller.h"
+
+#include <deque>
 
 class SyntheticRHXController : public AbstractRHXController
 {
@@ -43,8 +45,8 @@ public:
     bool isSynthetic() const override { return true; }
     bool isPlayback() const override { return false; }
     AcquisitionMode acquisitionMode() const override { return SyntheticMode; }
-    int open(const string& /* boardSerialNumber */) override { return 1; }  // Always return 1 to emulate a successful opening.
-    bool uploadFPGABitfile(const string& /* filename */) override { return true; }
+    int open(const std::string& /* boardSerialNumber */) override { return 1; }  // Always return 1 to emulate a successful opening.
+    bool uploadFPGABitfile(const std::string& /* filename */) override { return true; }
     void resetBoard() override {}
 
     void run() override {}
@@ -53,7 +55,7 @@ public:
     void resetFpga() override {}
 
     bool readDataBlock(RHXDataBlock *dataBlock) override;
-    bool readDataBlocks(int numBlocks, deque<RHXDataBlock*> &dataQueue) override;
+    bool readDataBlocks(int numBlocks, std::deque<RHXDataBlock*> &dataQueue) override;
     long readDataBlocksRaw(int numBlocks, uint8_t *buffer) override;
 
     void setContinuousRunMode(bool) override {}
@@ -104,10 +106,10 @@ public:
     void clearTtlOut() override {}
     void resetSequencers() override {}
     void programStimReg(int, int, StimRegister, int) override {}
-    void uploadCommandList(const vector<unsigned int>&, AuxCmdSlot, int) override {}
+    void uploadCommandList(const std::vector<unsigned int>&, AuxCmdSlot, int) override {}
 
-    int findConnectedChips(vector<ChipType> &chipType, vector<int> &portIndex, vector<int> &commandStream,
-                           vector<int> &numChannelsOnPort) override;
+    int findConnectedChips(std::vector<ChipType> &chipType, std::vector<int> &portIndex, std::vector<int> &commandStream,
+        std::vector<int> &numChannelsOnPort) override;
 
 private:
     unsigned int numWordsInFifo() override;

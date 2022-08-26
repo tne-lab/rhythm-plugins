@@ -31,9 +31,9 @@
 #include "ImpedanceMeter.h"
 #include "Headstage.h"
 
-#include "rhythm-api/RhythmDevice.hpp"
-#include "rhx-api/RhxDevice.hpp"
-#include "oni-api/OniDevice.hpp"
+#include "rhx-api/Hardware/rhxglobals.h"
+#include "rhx-api/Hardware/rhxcontroller.h"
+#include "oni-api/OniDevice.h"
 
 using namespace RhythmNode;
 
@@ -52,17 +52,6 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
 {
 
     boardType = boardType_;
-    
-    if (boardType == ACQUISITION_BOARD)
-        device = std::make_unique<RhythmDevice>();
-    else if (boardType == INTAN_RHD_USB)
-        device = std::make_unique<RhxDevice>(0);
-    else if (boardType == RHD_RECORDING_CONTROLLER)
-        device = std::make_unique<RhxDevice>(1);
-    else if (boardType == RHS_STIM_RECORDING_CONTROLLER)
-        device = std::make_unique<RhxDevice>(2);
-    else if (boardType == ONI_USB)
-        device = std::make_unique<OniDevice>();
 
     impedanceThread = new ImpedanceMeter(this);
 
@@ -72,45 +61,99 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
     int maxNumHeadstages = (boardType == RHD_RECORDING_CONTROLLER) ? 16 : 8;
 
     for (int i = 0; i < maxNumHeadstages; i++)
-        headstages.add(new Headstage(static_cast<Rhd2000EvalBoard::BoardDataSource>(i)));
+        headstages.add(new Headstage(i, maxNumHeadstages));
 
-    
-    
     sourceBuffers.add(new DataBuffer(2, 10000)); // start with 2 channels and automatically resize
 
-    // Open Opal Kelly XEM6010 board.
-    // Returns 1 if successful, -1 if FrontPanel cannot be loaded, and -2 if XEM6010 can't be found.
-
-    
     dacStream = new int[8];
     dacChannels = new int[8];
     dacThresholds = new float[8];
     dacChannelsToUpdate = new bool[8];
+
+    // TODO Select Serial Number if multiple ones are found
+    std::string serialNumber = frontPanelLib->GetDeviceListSerial(0).c_str();
+
+    // Populate usbVersion field.
+    usbVersion = (frontPanelLib->GetDeviceListModel(0) == okCFrontPanel::brdXEM6010LX45) ? USB2 : USB3;
+
+    AmplifierSampleRate ampSampleRate = AmplifierSampleRate::SampleRate30000Hz;
+
+    if (boardType == ACQUISITION_BOARD)
+    {
+        if (usbVersion == USB3)
+            device = std::make_unique<RHXController>(ControllerType::ControllerOEOpalKellyUSB3, ampSampleRate);
+        else
+            device = std::make_unique<RHXController>(ControllerType::ControllerOEOpalKellyUSB2, ampSampleRate);
+    }
+    else if (boardType == INTAN_RHD_USB)
+        device = std::make_unique<RHXController>(ControllerType::ControllerRecordUSB2, ampSampleRate);
+    else if (boardType == RHD_RECORDING_CONTROLLER)
+        device = std::make_unique<RHXController>(ControllerType::ControllerRecordUSB3, ampSampleRate);
+    else if (boardType == RHS_STIM_RECORDING_CONTROLLER)
+        device = std::make_unique<RHXController>(ControllerType::ControllerStimRecordUSB2, ampSampleRate);
+    else if (boardType == ONI_USB)
+        device = std::make_unique<OniDevice>();
     
     // 1. attempt to open the device
-    ErrorCode errorCode = device->open();
+    int errorCode = device->open(serialNumber);
     
-    if (errorCode == OPAL_KELLY_LIBRARY_NOT_FOUND)
+    if (errorCode == -1)
     {
         AlertWindow::showMessageBox(AlertWindow::NoIcon,
                                                      "Opal Kelly library not found.",
                                                      "The Opal Kelly library file was not found in the directory of the executable. Please locate it and re-add the plugin to the signal chain."
                                                      "Ok.");
-    } else if (errorCode == NO_DEVICE_FOUND)
+    } else if (errorCode == -2)
     {
         AlertWindow::showMessageBox(AlertWindow::NoIcon,
                                                      "No device was found.",
                                                      "Please connect one and re-add the plugin to the signal chain."
                                                      "Ok.");
-    } else if (errorCode == BITFILE_NOT_FOUND)
+    } 
+
+    String bitfilename;
+
+#if defined(__APPLE__)
+    File appBundle = File::getSpecialLocation(File::currentApplicationFile);
+    const String executableDirectory = appBundle.getChildFile("Contents/Resources").getFullPathName();
+#else
+    File executable = File::getSpecialLocation(File::currentExecutableFile);
+    const String executableDirectory = executable.getParentDirectory().getFullPathName();
+#endif
+
+    bitfilename = executableDirectory;
+    bitfilename += File::getSeparatorString();
+    bitfilename += "shared";
+    bitfilename += File::getSeparatorString();
+
+    if (boardType == ACQUISITION_BOARD)
+        bitfilename += usbVersion == USB3 ? "rhd2000_usb3.bit" : "rhd2000.bit";
+    else if (boardType == INTAN_RHD_USB)
+        bitfilename += "intan_rhd_usb.bit";
+    else if (boardType == RHD_RECORDING_CONTROLLER)
+        bitfilename += "intan_recording_controller.bit";
+    else if (boardType == RHS_STIM_RECORDING_CONTROLLER)
+        bitfilename += "intan_stim_record_controller.bit";
+
+    bool success = true;
+    
+    if (boardType != ONI_USB)
     {
-        AlertWindow::showMessageBox(AlertWindow::NoIcon,
-                                                     "No bitfile was found.",
-                                                     "Please place one in the appropriate directory and re-add the plugin to the signal chain."
-                                                     "Ok.");
-    } else if (errorCode == SUCCESS)
+
+        if (!File(bitfilename).exists())
+        {
+            AlertWindow::showMessageBox(AlertWindow::NoIcon,
+                "No bitfile was found.",
+                "Please place one in the appropriate directory and re-add the plugin to the signal chain."
+                "Ok.");
+        }
+
+        device->uploadFPGABitfile(bitfilename.toStdString());
+    } 
+
+    if (success)
     {
-        errorCode = device->detectHeadstages(headstages);
+        scanPorts();
         
         for (int k = 0; k < 8; k++)
         {
@@ -129,7 +172,7 @@ DeviceThread::~DeviceThread()
 
     LOGD("Closing device.");
     
-    device->close();
+    //device->close();
 
     delete[] dacStream;
     delete[] dacChannels;
@@ -247,6 +290,7 @@ void DeviceThread::setDACchannel(int dacOutput, int channel)
     if (channel < getNumDataOutputs(ContinuousChannel::ELECTRODE))
     {
         int channelCount = 0;
+
         for (int i = 0; i < enabledStreams.size(); i++)
         {
             if (channel < channelCount + numChannelsPerDataStream[i])
@@ -290,272 +334,14 @@ void DeviceThread::scanPorts()
     //Clear previous known streams
     enabledStreams.clear();
 
-    // Scan SPI ports
-    int delay, hs, id;
-    int register59Value;
+    std::vector<ChipType> chipType;
+    std::vector<int> portIndex;
+    std::vector<int> commandStream;
+    std::vector<int> numChannelsOnPort;
 
-    Rhd2000EvalBoard::BoardDataSource initStreamPorts[8] =
-    {
-        Rhd2000EvalBoard::PortA1,
-        Rhd2000EvalBoard::PortA2,
-        Rhd2000EvalBoard::PortB1,
-        Rhd2000EvalBoard::PortB2,
-        Rhd2000EvalBoard::PortC1,
-        Rhd2000EvalBoard::PortC2,
-        Rhd2000EvalBoard::PortD1,
-        Rhd2000EvalBoard::PortD2
-        //Rhd2000EvalBoard::PortE1,
-        //Rhd2000EvalBoard::PortE2,
-        //Rhd2000EvalBoard::PortF1,
-        //Rhd2000EvalBoard::PortF2,
-        //Rhd2000EvalBoard::PortG1,
-        //Rhd2000EvalBoard::PortG2,
-        //Rhd2000EvalBoard::PortH1,
-        //Rhd2000EvalBoard::PortH2
-    };
+    device->findConnectedChips(chipType, portIndex, commandStream, numChannelsOnPort);
 
-    chipId.insertMultiple(0, -1, 8);
-    Array<int> tmpChipId(chipId);
-
-    setSampleRate(Rhd2000EvalBoard::SampleRate30000Hz, true); // set to 30 kHz temporarily
-
-    // Enable all data streams, and set sources to cover one or two chips
-    // on Ports A-D.
-
-    // THIS IS DIFFERENT FOR RECORDING CONTROLLER:
-    for (int i = 0; i < 8; i++)
-        evalBoard->setDataSource(i, initStreamPorts[i]);
-
-    for (int i = 0; i < 8; i++)
-        evalBoard->enableDataStream(i, true);
-
-    LOGD("Number of enabled data streams: ", evalBoard->getNumEnabledDataStreams());
-
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortA,
-        Rhd2000EvalBoard::AuxCmd3, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortB,
-        Rhd2000EvalBoard::AuxCmd3, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortC,
-        Rhd2000EvalBoard::AuxCmd3, 0);
-    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortD,
-        Rhd2000EvalBoard::AuxCmd3, 0);
-
-    if (boardType == RHD_RECORDING_CONTROLLER)
-    {
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortE,
-            Rhd2000EvalBoard::AuxCmd3, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortF,
-            Rhd2000EvalBoard::AuxCmd3, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortG,
-            Rhd2000EvalBoard::AuxCmd3, 0);
-        evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::PortH,
-            Rhd2000EvalBoard::AuxCmd3, 0);
-    }
-
-    // Since our longest command sequence is 60 commands, we run the SPI
-    // interface for 60 samples. (64 for usb3 power-of two needs)
-    evalBoard->setMaxTimeStep(INIT_STEP);
-    evalBoard->setContinuousRunMode(false);
-
-    ScopedPointer<Rhd2000DataBlock> dataBlock =
-        new Rhd2000DataBlock(evalBoard->getNumEnabledDataStreams(), evalBoard->isUSB3());
-
-    Array<int> sumGoodDelays;
-    sumGoodDelays.insertMultiple(0, 0, 8);
-
-    Array<int> indexFirstGoodDelay;
-    indexFirstGoodDelay.insertMultiple(0, -1, 8);
-
-    Array<int> indexSecondGoodDelay;
-    indexSecondGoodDelay.insertMultiple(0, -1, 8);
-
-    // Run SPI command sequence at all 16 possible FPGA MISO delay settings
-    // to find optimum delay for each SPI interface cable.
-
-    LOGD( "Checking for connected amplifier chips..." );
-
-    for (delay = 0; delay < 16; delay++)
-    {
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortA, delay);
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortB, delay);
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortC, delay);
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortD, delay);
-
-        if (boardType == RHD_RECORDING_CONTROLLER)
-        {
-            evalBoard->setCableDelay(Rhd2000EvalBoard::PortE, delay);
-            evalBoard->setCableDelay(Rhd2000EvalBoard::PortF, delay);
-            evalBoard->setCableDelay(Rhd2000EvalBoard::PortG, delay);
-            evalBoard->setCableDelay(Rhd2000EvalBoard::PortH, delay);
-        }
-
-        // Start SPI interface.
-        evalBoard->run();
-
-        // Wait for the 60-sample run to complete.
-        while (evalBoard->isRunning())
-        {
-            ;
-        }
-        // Read the resulting single data block from the USB interface.
-        evalBoard->readDataBlock(dataBlock, INIT_STEP);
-
-        // Read the Intan chip ID number from each RHD2000 chip found.
-        // Record delay settings that yield good communication with the chip.
-        for (hs = 0; hs < headstages.size(); ++hs)
-        {
-
-            id = getDeviceId(dataBlock, hs, register59Value);
-
-            if (id == CHIP_ID_RHD2132 || id == CHIP_ID_RHD2216 ||
-                (id == CHIP_ID_RHD2164 && register59Value == REGISTER_59_MISO_A))
-            {
-                LOGD( "Device ID found: ", id );
-
-                sumGoodDelays.set(hs, sumGoodDelays[hs] + 1);
-
-                if (indexFirstGoodDelay[hs] == -1)
-                {
-                    indexFirstGoodDelay.set(hs, delay);
-                    tmpChipId.set(hs, id);
-                }
-                else if (indexSecondGoodDelay[hs] == -1)
-                {
-                    indexSecondGoodDelay.set(hs, delay);
-                    tmpChipId.set(hs, id);
-                }
-            }
-        }
-    }
-
-#if DEBUG_EMULATE_HEADSTAGES > 0
-    if (tmpChipId[0] > 0)
-    {
-        int chipIdx = 0;
-        for (int hs = 0; hs < DEBUG_EMULATE_HEADSTAGES && hs < headstages.size() ; ++hs)
-        {
-            if (enabledStreams.size() < MAX_NUM_DATA_STREAMS(evalBoard->isUSB3()))
-            {
-#ifdef DEBUG_EMULATE_64CH
-                chipId.set(chipIdx++,CHIP_ID_RHD2164);
-                chipId.set(chipIdx++,CHIP_ID_RHD2164_B);
-                enableHeadstage(hs, true, 2, 32);
-#else
-                chipId.set(chipIdx++,CHIP_ID_RHD2132);
-                enableHeadstage(hs, true, 1, 32);
-#endif
-            }
-        }
-        for (int i = 0; i < enabledStreams.size(); i++)
-        {
-            enabledStreams.set(i,Rhd2000EvalBoard::PortA1);
-        }
-    }
-
-#else
-    // Now, disable data streams where we did not find chips present.
-    int chipIdx = 0;
-
-    for (int hs = 0; hs < headstages.size(); ++hs)
-    {
-        if ((tmpChipId[hs] > 0) && (enabledStreams.size() < MAX_NUM_DATA_STREAMS))
-        {
-            chipId.set(chipIdx++,tmpChipId[hs]);
-
-            LOGD("Enabling headstage ", hs);
-
-            if (tmpChipId[hs] == CHIP_ID_RHD2164) //RHD2164
-            {
-                if (enabledStreams.size() < MAX_NUM_DATA_STREAMS - 1)
-                {
-                    enableHeadstage(hs, true, 2, 32);
-                    chipId.set(chipIdx++, CHIP_ID_RHD2164_B);
-                }
-                else //just one stream left
-                {
-                    enableHeadstage(hs, true, 1, 32);
-                }
-            }
-            else
-            {
-                enableHeadstage(hs, true, 1, tmpChipId[hs] == 1 ? 32:16);
-            }
-        }
-        else
-        {
-            enableHeadstage(hs, false);
-        }
-    }
-#endif
-    updateBoardStreams();
-
-    LOGD( "Number of enabled data streams: ", evalBoard->getNumEnabledDataStreams() );
-
-    // Set cable delay settings that yield good communication with each
-    // RHD2000 chip.
-    Array<int> optimumDelay;
-
-    optimumDelay.insertMultiple(0, 0, headstages.size());
-
-    for (hs = 0; hs < headstages.size(); ++hs)
-    {
-        if (sumGoodDelays[hs] == 1 || sumGoodDelays[hs] == 2)
-        {
-            optimumDelay.set(hs,indexFirstGoodDelay[hs]);
-        }
-        else if (sumGoodDelays[hs] > 2)
-        {
-            optimumDelay.set(hs,indexSecondGoodDelay[hs]);
-        }
-    }
-
-    evalBoard->setCableDelay(Rhd2000EvalBoard::PortA,
-                             std::max(optimumDelay[0],optimumDelay[1]));
-    evalBoard->setCableDelay(Rhd2000EvalBoard::PortB,
-                             std::max(optimumDelay[2],optimumDelay[3]));
-    evalBoard->setCableDelay(Rhd2000EvalBoard::PortC,
-                             std::max(optimumDelay[4],optimumDelay[5]));
-    evalBoard->setCableDelay(Rhd2000EvalBoard::PortD,
-                             std::max(optimumDelay[6],optimumDelay[7]));
-
-    if (boardType == RHD_RECORDING_CONTROLLER)
-    {
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortE,
-            std::max(optimumDelay[8], optimumDelay[9]));
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortF,
-            std::max(optimumDelay[10], optimumDelay[11]));
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortG,
-            std::max(optimumDelay[12], optimumDelay[13]));
-        evalBoard->setCableDelay(Rhd2000EvalBoard::PortH,
-            std::max(optimumDelay[14], optimumDelay[15]));
-
-    }
-
-    settings.cableLength.portA =
-        evalBoard->estimateCableLengthMeters(std::max(optimumDelay[0],optimumDelay[1]));
-    settings.cableLength.portB =
-        evalBoard->estimateCableLengthMeters(std::max(optimumDelay[2],optimumDelay[3]));
-    settings.cableLength.portC =
-        evalBoard->estimateCableLengthMeters(std::max(optimumDelay[4],optimumDelay[5]));
-    settings.cableLength.portD =
-        evalBoard->estimateCableLengthMeters(std::max(optimumDelay[6],optimumDelay[7]));
-
-    if (boardType == RHD_RECORDING_CONTROLLER)
-    {
-        settings.cableLength.portE =
-            evalBoard->estimateCableLengthMeters(std::max(optimumDelay[8], optimumDelay[9]));
-        settings.cableLength.portF =
-            evalBoard->estimateCableLengthMeters(std::max(optimumDelay[10], optimumDelay[11]));
-        settings.cableLength.portG =
-            evalBoard->estimateCableLengthMeters(std::max(optimumDelay[12], optimumDelay[13]));
-        settings.cableLength.portH =
-            evalBoard->estimateCableLengthMeters(std::max(optimumDelay[14], optimumDelay[15]));
-    }
-
-    setSampleRate(settings.savedSampleRateIndex); // restore saved sample rate
-
-    //updateRegisters();
-    //newScan = true;
+    // initialize headstages
 }
 
 
@@ -589,7 +375,7 @@ void DeviceThread::updateSettings(OwnedArray<ContinuousChannel>* continuousChann
         "description",
         "identifier",
 
-        static_cast<float>(evalBoard->getSampleRate())
+        static_cast<float>(device->getSampleRate())
 
     };
 
@@ -886,7 +672,8 @@ double DeviceThread::setUpperBandwidth(double upper)
 
     settings.dsp.upperBandwidth = upper;
 
-    updateRegisters();
+    //updateRegisters();
+    LOGC("DeviceThread::setUpperBandwidth NOT IMPLEMENTED.");
 
     return settings.dsp.upperBandwidth;
 }
@@ -898,7 +685,8 @@ double DeviceThread::setLowerBandwidth(double lower)
 
     settings.dsp.lowerBandwidth = lower;
 
-    updateRegisters();
+    LOGC("DeviceThread::setLowerBandwidth NOT IMPLEMENTED.");
+//updateRegisters();
 
     return settings.dsp.lowerBandwidth;
 }
@@ -909,7 +697,7 @@ double DeviceThread::setDspCutoffFreq(double freq)
 
     settings.dsp.cutoffFreq = freq;
 
-    updateRegisters();
+    device->setDacHighpassFilter(freq);
 
     return settings.dsp.cutoffFreq;
 }
@@ -926,7 +714,7 @@ void DeviceThread::setDSPOffset(bool state)
 
     settings.dsp.enabled = state;
 
-    updateRegisters();
+    LOGC("DeviceThread::setDSPOffset NOT IMPLEMENTED.");
 }
 
 void DeviceThread::setTTLoutputMode(bool state)
@@ -958,8 +746,7 @@ int DeviceThread::setNoiseSlicerLevel(int level)
 {
     settings.noiseSlicerLevel = level;
 
-    if (deviceFound)
-        evalBoard->setAudioNoiseSuppress(settings.noiseSlicerLevel);
+    LOGC("DeviceThread::setNoiseSlicerLevel NOT IMPLEMENTED.");
 
     // Level has been checked once before this and then is checked again in setAudioNoiseSuppress.
     // This may be overkill - maybe API should change so that the final function returns the value?
@@ -1019,22 +806,6 @@ bool DeviceThread::enableHeadstage(int hsNum, bool enabled, int nStr, int strCha
     return true;
 }
 
-void DeviceThread::updateBoardStreams()
-{
-    for (int i = 0; i < MAX_NUM_DATA_STREAMS; i++)
-    {
-        if (i < enabledStreams.size())
-        {
-            evalBoard->enableDataStream(i,true);
-            evalBoard->setDataSource(i,enabledStreams[i]);
-        }
-        else
-        {
-            evalBoard->enableDataStream(i,false);
-        }
-    }
-}
-
 bool DeviceThread::isHeadstageEnabled(int hsNum) const
 {
     return headstages[hsNum]->isConnected();
@@ -1077,7 +848,6 @@ void DeviceThread::enableAuxs(bool t)
 {
     settings.acquireAux = t;
     sourceBuffers[0]->resize(getNumChannels(), 10000);
-    updateRegisters();
 }
 
 void DeviceThread::enableAdcs(bool t)
@@ -1097,10 +867,16 @@ void DeviceThread::setSampleRate(int sampleRateIndex, bool isTemporary)
     
     if (!isTemporary)
     {
-        device->settings.savedSampleRateIndex = sampleRateIndex;
+        settings.savedSampleRateIndex = sampleRateIndex;
     }
     
-    device->setParameter(SAMPLE_RATE, sampleRateIndex);
+    device->setSampleRate((AmplifierSampleRate) sampleRateIndex);
+}
+
+unsigned int DeviceThread::calculateDataBlockSizeInWords(int numDataStreams, bool usb3, int nSamples)
+{
+    unsigned int samps = nSamples <= 0 ? SAMPLES_PER_DATA_BLOCK(usb3) : nSamples;
+    return samps * (4 + 2 + numDataStreams * 36 + 8 + 2);
 }
 
 bool DeviceThread::startAcquisition()
@@ -1108,7 +884,22 @@ bool DeviceThread::startAcquisition()
     
     impedanceThread->waitSafely();
     
-    ErrorCode errorCode = device->startAcquisition();
+    if (!deviceFound)
+        return false;
+
+    dataBlock.reset();
+
+    dataBlock = std::make_unique<RHXDataBlock>(device->getType(), device->getNumEnabledDataStreams());
+
+    // TODO: Fix this
+    blockSize = calculateDataBlockSizeInWords(device->getNumEnabledDataStreams(), usbVersion == USB3, 1);
+
+    int ledArray[8] = { 1, 1, 0, 0, 0, 0, 0, 0 };
+    device->setLedDisplay(ledArray);
+
+    device->flush();
+    device->setContinuousRunMode(true);
+    device->run();
     
     // reset TTL output state
     for (int k = 0; k < 16; k++)
@@ -1141,6 +932,20 @@ bool DeviceThread::stopAcquisition()
         LOGD("DeviceThread failed to exit, continuing anyway...");
     }
 
+    if (deviceFound)
+    {
+        device->setContinuousRunMode(false);
+        device->setMaxTimeStep(0);
+        LOGD("Flushing FIFO.");
+        device->flush();
+    }
+
+    if (deviceFound && boardType == ACQUISITION_BOARD)
+    {
+        int ledArray[8] = { 1, 0, 0, 0, 0, 0, 0, 0 };
+        device->setLedDisplay(ledArray);
+    }
+
     sourceBuffers[0]->clear();
     
     isTransmitting = false;
@@ -1159,13 +964,123 @@ bool DeviceThread::stopAcquisition()
 bool DeviceThread::updateBuffer()
 {
             
-    ErrorCode erroCode = device->fillDataBlock(&dataBlock);
+    uint8_t* bufferPtr;
+    double ts;
 
-    sourceBuffers[0]->addToBuffer(dataBlock.samples.data(),
-                                  dataBlock.sampleNumbers.data(),
-                                  dataBlock.timestamps.data(),
-                                  dataBlock.ttlEventWords.data(),
-                                  nSamps);
+    if (usbVersion == USB3 || device->getNumWordsInFifo() >= blockSize)
+    {
+        bool return_code;
+
+        return_code = device->readDataBlocksRaw(1, bufferPtr);
+
+        int index = 0;
+        int auxIndex, chanIndex;
+        int numStreams = enabledStreams.size();
+        int nSamps = dataBlock->samplesPerDataBlock();
+
+        //evalBoard->printFIFOmetrics();
+        for (int samp = 0; samp < nSamps; samp++)
+        {
+            int channel = -1;
+
+            if (!dataBlock->checkUsbHeader(bufferPtr, index))
+            {
+                LOGE("Error in rhxcontroller::readDataBlock: Incorrect header.");
+                break;
+            }
+
+            index += 8; // magic number header width (bytes)
+            int64 timestamp = dataBlock->convertUsbTimeStamp(bufferPtr, index);
+            index += 4; // timestamp width
+            auxIndex = index; // aux chans start at this offset
+            index += 6 * numStreams; // width of the 3 aux chans
+
+            for (int dataStream = 0; dataStream < numStreams; dataStream++)
+            {
+
+                int nChans = numChannelsPerDataStream[dataStream];
+
+                chanIndex = index + 2 * dataStream;
+
+                if ((chipId[dataStream] == CHIP_ID_RHD2132) && (nChans == 16)) //RHD2132 16ch. headstage
+                {
+                    chanIndex += 2 * RHD2132_16CH_OFFSET * numStreams;
+                }
+
+                for (int chan = 0; chan < nChans; chan++)
+                {
+                    channel++;
+                    thisSample[channel] = float(*(uint16*)(bufferPtr + chanIndex) - 32768) * 0.195f;
+                    chanIndex += 2 * numStreams; // single chan width (2 bytes)
+                }
+
+            }
+            index += 64 * numStreams; // neural data width
+            auxIndex += 2 * numStreams; // skip AuxCmd1 slots (see updateRegisters())
+            // copy the 3 aux channels
+            if (settings.acquireAux)
+            {
+                for (int dataStream = 0; dataStream < numStreams; dataStream++)
+                {
+                    if (chipId[dataStream] != CHIP_ID_RHD2164_B)
+                    {
+                        int auxNum = (samp + 3) % 4;
+                        if (auxNum < 3)
+                        {
+                            auxSamples[dataStream][auxNum] = float(*(uint16*)(bufferPtr + auxIndex) - 32768) * 0.0000374;
+                        }
+                        for (int chan = 0; chan < 3; chan++)
+                        {
+                            channel++;
+                            if (auxNum == 3)
+                            {
+                                auxBuffer[channel] = auxSamples[dataStream][chan];
+                            }
+                            thisSample[channel] = auxBuffer[channel];
+                        }
+                    }
+                    auxIndex += 2; // single chan width (2 bytes)
+                }
+            }
+            index += 2 * numStreams; // skip over filler word at the end of each data stream
+            // copy the 8 ADC channels
+            if (settings.acquireAdc)
+            {
+                for (int adcChan = 0; adcChan < 8; ++adcChan)
+                {
+
+                    channel++;
+                    // ADC waveform units = volts
+
+                    if (boardType == ACQUISITION_BOARD)
+                    {
+                        thisSample[channel] = adcRangeSettings[adcChan] == 0 ?
+                            0.00015258789 * float(*(uint16*)(bufferPtr + index)) - 5 - 0.4096 : // account for +/-5V input range and DC offset
+                            0.00030517578 * float(*(uint16*)(bufferPtr + index)); 
+                    }
+                    else if (boardType == INTAN_RHD_USB) {
+                        thisSample[channel] = 0.000050354 * float(*(uint16*)(bufferPtr + index));
+                    }
+                    index += 2; // single chan width (2 bytes)
+                }
+            }
+            else
+            {
+                index += 16; // skip ADC chans (8 * 2 bytes)
+            }
+
+            uint64 ttlEventWord = *(uint64*)(bufferPtr + index) & 65535;
+
+            index += 4;
+
+            sourceBuffers[0]->addToBuffer(thisSample,
+                &timestamp,
+                &ts,
+                &ttlEventWord,
+                1);
+        }
+
+    }
 
     if (updateSettingsDuringAcquisition)
     {
@@ -1177,26 +1092,26 @@ bool DeviceThread::updateBuffer()
                 
                 if (dacChannels[k] >= 0)
                 {
-                    evalBoard->enableDac(k, true);
-                    evalBoard->selectDacDataStream(k, dacStream[k]);
-                    evalBoard->selectDacDataChannel(k, dacChannels[k]);
-                    evalBoard->setDacThreshold(k, (int)abs((dacThresholds[k]/0.195) + 32768),dacThresholds[k] >= 0);
+                    device->enableDac(k, true);
+                    device->selectDacDataStream(k, dacStream[k]);
+                    device->selectDacDataChannel(k, dacChannels[k]);
+                    device->setDacThreshold(k, (int)abs((dacThresholds[k]/0.195) + 32768),dacThresholds[k] >= 0);
                    // evalBoard->setDacThresholdVoltage(k, (int) dacThresholds[k]);
                 }
                 else
                 {
-                    evalBoard->enableDac(k, false);
+                    device->enableDac(k, false);
                 }
             }
         }
 
-        evalBoard->setTtlMode(settings.ttlMode ? 1 : 0);
-        evalBoard->enableExternalFastSettle(settings.fastTTLSettleEnabled);
-        evalBoard->setExternalFastSettleChannel(settings.fastSettleTTLChannel);
-        evalBoard->setDacHighpassFilter(settings.desiredDAChpf);
-        evalBoard->enableDacHighpassFilter(settings.desiredDAChpfState);
-        evalBoard->enableBoardLeds(settings.ledsEnabled);
-        evalBoard->setClockDivider(settings.clockDivideFactor);
+        device->setTtlMode(settings.ttlMode ? 1 : 0);
+        device->enableExternalFastSettle(settings.fastTTLSettleEnabled);
+        device->setExternalFastSettleChannel(settings.fastSettleTTLChannel);
+        device->setDacHighpassFilter(settings.desiredDAChpf);
+        device->enableDacHighpassFilter(settings.desiredDAChpfState);
+        device->enableLeds(settings.ledsEnabled);
+        device->setClockDivider(settings.clockDivideFactor);
 
         updateSettingsDuringAcquisition = false;
     }
@@ -1212,7 +1127,7 @@ bool DeviceThread::updateBuffer()
 
         }
 
-        device->setDigitalOut(TTL_OUTPUT_STATE);
+        device->setTtlOut(TTL_OUTPUT_STATE);
 
         LOGB("TTL OUTPUT STATE: ",
             TTL_OUTPUT_STATE[0],
@@ -1343,12 +1258,12 @@ int DeviceThread::getHeadstageChannel (int& hs, int ch) const
 
 void DeviceThread::enableBoardLeds(bool enable)
 {
-    device->settings.ledsEnabled = enable;
+    settings.ledsEnabled = enable;
 
     if (isAcquisitionActive())
         updateSettingsDuringAcquisition = true;
     else
-        device->setParameter(ENABLE_LEDS, enable);
+        device->enableLeds(enable);
 }
 
 int DeviceThread::setClockDivider(int divide_ratio)
@@ -1366,14 +1281,14 @@ int DeviceThread::setClockDivider(int divide_ratio)
     // 1        0
     // >=2      Ratio/2
     if (divide_ratio == 1)
-        device->settings.clockDivideFactor = 0;
+        settings.clockDivideFactor = 0;
     else
-        device->settings.clockDivideFactor = static_cast<uint16>(divide_ratio/2);
+        settings.clockDivideFactor = static_cast<uint16>(divide_ratio/2);
 
     if (isAcquisitionActive())
         updateSettingsDuringAcquisition = true;
     else
-        device->setParameter(CLOCK_DIVIDE_FACTOR, device->settings.clockDivideFactor);
+        device->setClockDivider(settings.clockDivideFactor);
 
     return divide_ratio;
 }
@@ -1388,10 +1303,12 @@ short DeviceThread::getAdcRange(int channel) const
     return adcRangeSettings[channel];
 }
 
-void DeviceThread::runImpedanceTest()
+void DeviceThread::runImpedanceTest(double frequency)
 {
 
     impedanceThread->stopThreadSafely();
+
+    impedanceThread->setFrequency(frequency);
 
     impedanceThread->runThread();
 

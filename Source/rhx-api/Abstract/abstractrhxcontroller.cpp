@@ -82,13 +82,16 @@ AbstractRHXController::~AbstractRHXController()
 void AbstractRHXController::initialize()
 {
     resetBoard();
+
     if (type == ControllerStimRecordUSB2) {
         enableAuxCommandsOnAllStreams();
         setGlobalSettlePolicy(false, false, false, false, false);
         setTtlOutMode(false, false, false, false, false, false, false, false);
     }
+    
     setSampleRate(SampleRate30000Hz);  // By default, initialize to highest sampling rate.
-    if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
+    
+    if (type != ControllerStimRecordUSB2) {
         selectAuxCommandBankAllPorts(AuxCmd1, 0);
         selectAuxCommandBankAllPorts(AuxCmd2, 0);
         selectAuxCommandBankAllPorts(AuxCmd3, 0);
@@ -97,10 +100,12 @@ void AbstractRHXController::initialize()
     selectAuxCommandLength(AuxCmd1, 0, 0);
     selectAuxCommandLength(AuxCmd2, 0, 0);
     selectAuxCommandLength(AuxCmd3, 0, 0);
+
     if (type == ControllerStimRecordUSB2) {
         selectAuxCommandLength(AuxCmd4, 0, 0);
         setStimCmdMode(false);
     }
+
     setContinuousRunMode(true);
     setMaxTimeStep(4294967295);  // 4294967295 == (2^32 - 1)
 
@@ -108,6 +113,7 @@ void AbstractRHXController::initialize()
     setCableLengthFeet(PortB, 3.0);
     setCableLengthFeet(PortC, 3.0);
     setCableLengthFeet(PortD, 3.0);
+
     if (type == ControllerRecordUSB3) {
         setCableLengthFeet(PortE, 3.0);
         setCableLengthFeet(PortF, 3.0);
@@ -117,7 +123,7 @@ void AbstractRHXController::initialize()
 
     setDspSettle(false);
 
-    if (type == ControllerRecordUSB2) {
+    if (type == ControllerRecordUSB2 || type == ControllerOEOpalKellyUSB2) {
         setDataSource(0, PortA1);
         setDataSource(1, PortB1);
         setDataSource(2, PortC1);
@@ -173,7 +179,7 @@ void AbstractRHXController::initialize()
     setDacGain(0);
     setAudioNoiseSuppress(0);
 
-    if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
+    if (type != ControllerStimRecordUSB2) {
         setTtlMode(1);      // Digital outputs 0-7 are DAC comparators; 8-15 under manual control.
         enableExternalFastSettle(false);
         setExternalFastSettleChannel(0);
@@ -192,7 +198,7 @@ void AbstractRHXController::initialize()
         enableDacReref(false);
     }
 
-    if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
+    if (type != ControllerStimRecordUSB2) {
         enableExternalDigOut(PortA, false);
         enableExternalDigOut(PortB, false);
         enableExternalDigOut(PortC, false);
@@ -275,8 +281,12 @@ int AbstractRHXController::maxNumDataStreams(ControllerType type_)
 {
     switch (type_) {
     case ControllerRecordUSB2:
+    case ControllerOEOpalKellyUSB2:
     case ControllerStimRecordUSB2:
         return 8;   // USB 2 bus is limited to 8 data streams
+    case ControllerOEOpalKellyUSB3:
+    case ControllerOEECP5:
+        return 16;  // OE boards can support 8 64-channel headstages (2 streams each)
     case ControllerRecordUSB3:
         return 32;   // USB 3 bus can handle 32 data streams
     default:
@@ -320,6 +330,12 @@ int AbstractRHXController::boardMode(ControllerType type_)
         return 13;
     case ControllerStimRecordUSB2:
         return 14;
+    case ControllerOEOpalKellyUSB2:
+        return 15;
+    case ControllerOEOpalKellyUSB3:
+        return 16;
+    case ControllerOEECP5:
+        return 17;
     default:
         return -1;
     }
@@ -423,47 +439,47 @@ int AbstractRHXController::numDigitalIO(ControllerType type_, bool expanderConne
     return numDigitalInputs;
 }
 
-string AbstractRHXController::getAnalogInputChannelName(ControllerType type_, int channel_)
+std::string AbstractRHXController::getAnalogInputChannelName(ControllerType type_, int channel_)
 {
     return "ANALOG-IN-" + getAnalogIOChannelNumber(type_, channel_);
 }
 
-string AbstractRHXController::getAnalogOutputChannelName(ControllerType type_, int channel_)
+std::string AbstractRHXController::getAnalogOutputChannelName(ControllerType type_, int channel_)
 {
     return "ANALOG_OUT-" + getAnalogIOChannelNumber(type_, channel_);
 }
 
-string AbstractRHXController::getDigitalInputChannelName(ControllerType type_, int channel_)
+std::string AbstractRHXController::getDigitalInputChannelName(ControllerType type_, int channel_)
 {
     return "DIGITAL-IN-" + getDigitalIOChannelNumber(type_, channel_);
 }
 
-string AbstractRHXController::getDigitalOutputChannelName(ControllerType type_, int channel_)
+std::string AbstractRHXController::getDigitalOutputChannelName(ControllerType type_, int channel_)
 {
     return "DIGITAL-OUT-" + getDigitalIOChannelNumber(type_, channel_);
 }
 
-string AbstractRHXController::getAnalogIOChannelNumber(ControllerType type_, int channel_)
+std::string AbstractRHXController::getAnalogIOChannelNumber(ControllerType type_, int channel_)
 {
     int channelWithOffset = (type_ == ControllerRecordUSB2) ? channel_ : channel_ + 1;
-    string channelNumber = to_string(channelWithOffset);
+    std::string channelNumber = std::to_string(channelWithOffset);
     int numChars = (type_ == ControllerRecordUSB2) ? 2 : 1;
     if (numChars == 2 && channelWithOffset < 10) channelNumber = "0" + channelNumber;
     return channelNumber;
 }
 
-string AbstractRHXController::getDigitalIOChannelNumber(ControllerType type_, int channel_)
+std::string AbstractRHXController::getDigitalIOChannelNumber(ControllerType type_, int channel_)
 {
     int channelWithOffset = (type_ == ControllerRecordUSB2) ? channel_ : channel_ + 1;
-    string channelNumber = to_string(channelWithOffset);
+    std::string channelNumber = std::to_string(channelWithOffset);
     int numChars = 2;
     if (numChars == 2 && channelWithOffset < 10) channelNumber = "0" + channelNumber;
     return channelNumber;
 }
 
-string AbstractRHXController::getBoardTypeString(ControllerType type_)
+std::string AbstractRHXController::getBoardTypeString(ControllerType type_)
 {
-    string typeString;
+    std::string typeString;
     switch (type_) {
     case ControllerRecordUSB2:
         typeString = "ControllerRecordUSB2"; break;
@@ -471,15 +487,21 @@ string AbstractRHXController::getBoardTypeString(ControllerType type_)
         typeString = "ControllerRecordUSB3"; break;
     case ControllerStimRecordUSB2:
         typeString = "ControllerStimRecordUSB2"; break;
+    case ControllerOEOpalKellyUSB2:
+        typeString = "ControllerOEOpalKellyUSB2"; break;
+    case ControllerOEOpalKellyUSB3:
+        typeString = "ControllerOEOpalKellyUSB3"; break;
+    case  ControllerOEECP5:
+        typeString = "ControllerOEECP5"; break;
     default:
         typeString = "unknown"; break;
     }
     return typeString;
 }
 
-string AbstractRHXController::getSampleRateString(AmplifierSampleRate sampleRate)
+std::string AbstractRHXController::getSampleRateString(AmplifierSampleRate sampleRate)
 {
-    string sampleRateString;
+    std::string sampleRateString;
     switch (sampleRate) {
     case SampleRate30000Hz:
         sampleRateString = "30 kHz"; break;
@@ -521,9 +543,9 @@ string AbstractRHXController::getSampleRateString(AmplifierSampleRate sampleRate
     return sampleRateString;
 }
 
-string AbstractRHXController::getStimStepSizeString(StimStepSize stepSize)
+std::string AbstractRHXController::getStimStepSizeString(StimStepSize stepSize)
 {
-    string stimStepSizeString;
+    std::string stimStepSizeString;
     switch (stepSize) {
     case StimStepSize10nA:
         stimStepSizeString = "10 nA"; break;
@@ -628,7 +650,7 @@ StimStepSize AbstractRHXController::nearestStimStepSize(double step, double perc
 // (Public, threadsafe method.)
 unsigned int AbstractRHXController::getNumWordsInFifo()
 {
-    lock_guard<mutex> lockOk(okMutex);
+    std::lock_guard<std::mutex> lockOk(okMutex);
 
     return numWordsInFifo();
 }
@@ -662,36 +684,36 @@ unsigned int AbstractRHXController::fifoCapacityInWords()
 }
 
 // Print a command list to the console in readable form.
-void AbstractRHXController::printCommandList(const vector<unsigned int> &commandList) const
+void AbstractRHXController::printCommandList(const std::vector<unsigned int> &commandList) const
 {
     unsigned int i, cmd;
     int channel, reg, data, uFlag, mFlag, dFlag, hFlag;
 
-    cout << '\n';
+    std::cout << '\n';
     for (i = 0; i < commandList.size(); ++i) {
         cmd = commandList[i];
         if (type != ControllerStimRecordUSB2) {
             if (cmd < 0 || cmd > 0xffff) {
-                cout << "  command[" << i << "] = INVALID COMMAND: " << cmd << '\n';
+                std::cout << "  command[" << i << "] = INVALID COMMAND: " << cmd << '\n';
             } else if ((cmd & 0xc000) == 0x0000) {
                 channel = (cmd & 0x3f00) >> 8;
-                cout << "  command[" << i << "] = CONVERT(" << channel << ")\n";
+                std::cout << "  command[" << i << "] = CONVERT(" << channel << ")\n";
             } else if ((cmd & 0xc000) == 0xc000) {
                 reg = (cmd & 0x3f00) >> 8;
-                cout << "  command[" << i << "] = READ(" << reg << ")\n";
+                std::cout << "  command[" << i << "] = READ(" << reg << ")\n";
             } else if ((cmd & 0xc000) == 0x8000) {
                 reg = (cmd & 0x3f00) >> 8;
                 data = (cmd & 0x00ff);
-                cout << "  command[" << i << "] = WRITE(" << reg << ",";
-                cout << hex << uppercase << internal << setfill('0') << setw(2) << data << nouppercase << dec;
-                cout << ")\n";
+                std::cout << "  command[" << i << "] = WRITE(" << reg << ",";
+                std::cout << std::hex << std::uppercase << std::internal << std::setfill('0') << std::setw(2) << data << std::nouppercase << std::dec;
+                std::cout << ")\n";
             } else if (cmd == 0x5500) {
-                cout << "  command[" << i << "] = CALIBRATE\n";
+                std::cout << "  command[" << i << "] = CALIBRATE\n";
             } else if (cmd == 0x6a00) {
-                cout << "  command[" << i << "] = CLEAR\n";
+                std::cout << "  command[" << i << "] = CLEAR\n";
             } else {
-                cout << "  command[" << i << "] = INVALID COMMAND: ";
-                cout << hex << uppercase << internal << setfill('0') << setw(4) << cmd << nouppercase << dec << '\n';
+                std::cout << "  command[" << i << "] = INVALID COMMAND: ";
+                std::cout << std::hex << std::uppercase << std::internal << std::setfill('0') << std::setw(4) << cmd << std::nouppercase << std::dec << '\n';
             }
         } else {
             channel = (cmd & 0x003f0000) >> 16;
@@ -703,24 +725,24 @@ void AbstractRHXController::printCommandList(const vector<unsigned int> &command
             data = (cmd & 0x0000ffff);
 
             if ((cmd & 0xc0000000) == 0x00000000) {
-                cout << "  command[" << i << "] = CONVERT(" << channel << "), UMDH=" << uFlag << mFlag << dFlag << hFlag << '\n';
+                std::cout << "  command[" << i << "] = CONVERT(" << channel << "), UMDH=" << uFlag << mFlag << dFlag << hFlag << '\n';
             } else if ((cmd & 0xc0000000) == 0xc0000000) {
-                cout << "  command[" << i << "] = READ(" << reg << "), UM=" << uFlag << mFlag << '\n';
+                std::cout << "  command[" << i << "] = READ(" << reg << "), UM=" << uFlag << mFlag << '\n';
             } else if ((cmd & 0xc0000000) == 0x80000000) {
-                cout << "  command[" << i << "] = WRITE(" << reg << ",";
-                cout << hex << uppercase << internal << setfill('0') << setw(4) << data << nouppercase << dec;
-                cout << "), UM=" << uFlag << mFlag << '\n';
+                std::cout << "  command[" << i << "] = WRITE(" << reg << ",";
+                std::cout << std::hex << std::uppercase << std::internal << std::setfill('0') << std::setw(4) << data << std::nouppercase << std::dec;
+                std::cout << "), UM=" << uFlag << mFlag << '\n';
             } else if (cmd == 0x55000000) {
-                cout << "  command[" << i << "] = CALIBRATE\n";
+                std::cout << "  command[" << i << "] = CALIBRATE\n";
             } else if (cmd == 0x6a000000) {
-                cout << "  command[" << i << "] = CLEAR\n";
+                std::cout << "  command[" << i << "] = CLEAR\n";
             } else {
-                cout << "  command[" << i << "] = INVALID COMMAND: ";
-                cout << hex << uppercase << internal << setfill('0') << setw(8) << cmd << nouppercase << dec << '\n';
+                std::cout << "  command[" << i << "] = INVALID COMMAND: ";
+                std::cout << std::hex << std::uppercase << std::internal << std::setfill('0') << std::setw(8) << cmd << std::nouppercase << std::dec << '\n';
             }
         }
     }
-    cout << '\n';
+    std::cout << '\n';
 }
 
 // Set the delay for sampling the MISO line on a particular SPI port (PortA - PortH) based on the length
@@ -811,13 +833,13 @@ int AbstractRHXController::getCableDelay(BoardPort port) const
     case PortH:
         return cableDelay[7];
     default:
-        cerr << "Error in RHXController::getCableDelay: unknown port.\n";
+        std::cerr << "Error in RHXController::getCableDelay: unknown port.\n";
         return -1;
     }
 }
 
 // Return FPGA cable delays for all SPI ports.
-void AbstractRHXController::getCableDelay(vector<int> &delays) const
+void AbstractRHXController::getCableDelay(std::vector<int> &delays) const
 {
     if ((int) delays.size() != maxNumSPIPorts()) {
         delays.resize(maxNumSPIPorts());
@@ -850,7 +872,7 @@ void AbstractRHXController::configureStimPulses(int stream, int channel, int num
 {
     if (type != ControllerStimRecordUSB2) return;
     if (numPulses < 1) {
-        cerr << "Error in RHXController::configureStimPulses: numPulses out of range.\n";
+        std::cerr << "Error in RHXController::configureStimPulses: numPulses out of range.\n";
         return;
     }
 
@@ -867,7 +889,7 @@ void AbstractRHXController::configureStimPulses(int stream, int channel, int num
 // letter is a port designation, followed by a hyphen, followed by "AUX" and a number ranging from 1-6.  Auxiliary
 // waveNames return a valid stream number, but channel = -1 since three auxiliary inputs share the same channel.
 // Invalid waveNames return stream = -1, channel = -1.
-StreamChannelPair AbstractRHXController::streamChannelFromWaveName(const string& waveName) const
+StreamChannelPair AbstractRHXController::streamChannelFromWaveName(const std::string& waveName) const
 {
     StreamChannelPair streamChannelPair;
     streamChannelPair.stream = -1;
@@ -893,10 +915,10 @@ StreamChannelPair AbstractRHXController::streamChannelFromWaveName(const string&
 
     int channelNumber;
     if (auxChannel) {
-        channelNumber = stoi(waveName.substr(5,1));
+        channelNumber = std::stoi(waveName.substr(5,1));
         if (channelNumber < 1 || channelNumber > 6) return streamChannelPair;
     } else {
-        channelNumber = stoi(waveName.substr(2,3));
+        channelNumber = std::stoi(waveName.substr(2,3));
         if (channelNumber < 0 || channelNumber > 127) return streamChannelPair;
     }
 

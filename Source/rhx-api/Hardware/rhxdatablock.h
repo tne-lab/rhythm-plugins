@@ -34,8 +34,6 @@
 #include <cstdint>
 #include "rhxglobals.h"
 
-using namespace std;
-
 const int USBHeaderSizeInBytes = 8;
 const uint64_t HeaderRecordUSB2 = 0xc691199927021942UL;
 const uint64_t HeaderRecordUSB3 = 0xd7a22aaa38132a53UL;
@@ -84,6 +82,15 @@ public:
     static uint64_t headerMagicNumber(ControllerType type_);
     uint64_t headerMagicNumber() const;
 
+    inline uint32_t convertUsbTimeStamp(const uint8_t* usbBuffer, int index)
+    {
+        uint32_t x1 = usbBuffer[index];
+        uint32_t x2 = usbBuffer[index + 1];
+        uint32_t x3 = usbBuffer[index + 2];
+        uint32_t x4 = usbBuffer[index + 3];
+        return (x4 << 24) + (x3 << 16) + (x2 << 8) + (x1 << 0);
+    }
+
 private:
     ControllerType type;
     int numDataStreams;
@@ -106,14 +113,7 @@ private:
 
     void allocateMemory();
 
-    inline uint32_t convertUsbTimeStamp(const uint8_t* usbBuffer, int index)
-    {
-        uint32_t x1 = usbBuffer[index];
-        uint32_t x2 = usbBuffer[index + 1];
-        uint32_t x3 = usbBuffer[index + 2];
-        uint32_t x4 = usbBuffer[index + 3];
-        return (x4 << 24) + (x3 << 16) + (x2 << 8) + (x1 << 0);
-    }
+    
 
     inline int convertUsbWord(const uint8_t* usbBuffer, int index)
     {

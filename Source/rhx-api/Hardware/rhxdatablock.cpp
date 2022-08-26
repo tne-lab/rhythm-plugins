@@ -389,7 +389,7 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
 
     for (int t = 0; t < samplesPerDataBlock(); ++t) {
         if (!checkUsbHeader(usbBuffer, index)) {
-            cerr << "Error in RHXDataBlock::fillFromUsbBuffer: Incorrect header.\n";
+            std::cerr << "Error in RHXDataBlock::fillFromUsbBuffer: Incorrect header.\n";
         }
         index += 8;
         timeStampInternal[t] = convertUsbTimeStamp(usbBuffer, index);

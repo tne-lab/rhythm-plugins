@@ -25,8 +25,9 @@
 
 using namespace RhythmNode;
 
-Headstage::Headstage(Rhd2000EvalBoard::BoardDataSource dataSource_) :
-    dataSource(dataSource_),
+Headstage::Headstage(int headstageIndex_, int maxNumHeadstages_) :
+    maxNumHeadstages(maxNumHeadstages_),
+    headstageIndex(headstageIndex_),
     numStreams(0), 
     channelsPerStream(32), 
     halfChannels(false),
@@ -45,7 +46,7 @@ Headstage::Headstage(Rhd2000EvalBoard::BoardDataSource dataSource_) :
         "H1", "H2"
     };
 
-    prefix = stream_prefix[int(dataSource_)];
+    prefix = stream_prefix[headstageIndex];
 }
 
 int Headstage::getNumStreams() const
@@ -126,10 +127,10 @@ int Headstage::getNumActiveChannels() const
     return (int)(getNumChannels() / (halfChannels ? 2 : 1));
 }
 
-Rhd2000EvalBoard::BoardDataSource Headstage::getDataStream (int index) const
+int Headstage::getDataStream (int index) const
 {
     if (index < 0 || index > 1) index = 0;
-        return static_cast<Rhd2000EvalBoard::BoardDataSource>(dataSource + MAX_NUM_HEADSTAGES * index);
+        return headstageIndex + maxNumHeadstages * index;
 }
 
 bool Headstage::isConnected() const

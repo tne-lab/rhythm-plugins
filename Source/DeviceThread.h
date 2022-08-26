@@ -31,11 +31,20 @@
 #include <array>
 #include <atomic>
 
+#define MAX_NUM_DATA_STREAMS 32
 #define MAX_NUM_CHANNELS MAX_NUM_DATA_STREAMS * 35
 
-#define MAX_NUM_HEADSTAGES MAX_NUM_DATA_STREAMS / 2
+#define CHIP_ID_RHD2132  1
+#define CHIP_ID_RHD2216  2
+#define CHIP_ID_RHD2164  4
+#define CHIP_ID_RHD2164_B  1000
+#define REGISTER_59_MISO_A  53
+#define REGISTER_59_MISO_B  58
+#define RHD2132_16CH_OFFSET 8
 
-#include "AbstractDevice.hpp"
+#include "rhx-api/Abstract/abstractrhxcontroller.h"
+#include "rhx-api/Hardware/rhxdatablock.h"
+#include "rhx-api/Hardware/okFrontPanelDLL.h"
 
 namespace RhythmNode
 {
@@ -52,10 +61,25 @@ namespace RhythmNode
         RHS_STIM_RECORDING_CONTROLLER
 	};
 
+	enum UsbVersion
+	{
+		USB2,
+		USB3
+	};
+
 	enum ChannelNamingScheme
 	{
 		GLOBAL_INDEX = 1,
 		STREAM_INDEX = 2
+	};
+
+	struct Impedances
+	{
+		Array<int> streams;
+		Array<int> channels;
+		Array<float> magnitudes;
+		Array<float> phases;
+		bool valid = false;
 	};
 
 	/**
@@ -134,6 +158,9 @@ namespace RhythmNode
         /** Returns the channel count for a particular headstage */
 		int getChannelsInHeadstage(int hsNum) const;
 
+		/** Returns number of 16-bit words in a USB data block*/
+		unsigned int calculateDataBlockSizeInWords(int numDataStreams, bool usb3, int nSamples);
+
 		/* Gets the absolute channel index from the headstage channel index*/
 		int getChannelFromHeadstage(int hs, int ch);
 
@@ -184,7 +211,7 @@ namespace RhythmNode
 		int getHeadstageChannels(int hsNum) const;
 		int getActiveChannelsInHeadstage(int hsNum) const;
 
-		void runImpedanceTest();
+		void runImpedanceTest(double frequency);
 
 		void enableBoardLeds(bool enable);
 
@@ -193,8 +220,6 @@ namespace RhythmNode
 		void setAdcRange(int adcChannel, short rangeType);
 
 		short getAdcRange(int adcChannel) const;
-
-
 
         /**
             A timer that stores the on/off times of digital output events
@@ -227,13 +252,16 @@ namespace RhythmNode
 			int ttlLine,
 			bool state);
 
+		/** List of enabled streams */
+		Array<int> enabledStreams;
+
 	private:
         
-        /** Pointer to the AbstractDevice object */
-        std::unique_ptr<AbstractDevice> device;
+        /** Pointer to the device object */
+        std::unique_ptr<AbstractRHXController> device;
         
-        /** Vector of headstage objects*/
-        std::vector<Headstage> headstages;
+        /** Array of headstage objects*/
+        OwnedArray<Headstage> headstages;
 
         /** Queue for digital output commands */
 		std::queue<DigitalOutputCommand> digitalOutputCommands;
@@ -245,11 +273,13 @@ namespace RhythmNode
         ScopedPointer<ImpedanceMeter> impedanceThread;
 
 		bool enableHeadstage(int hsNum, bool enabled, int nStr = 1, int strChans = 32);
-		void updateBoardStreams();
+
 		void setCableLength(int hsNum, float length);
 
-		ScopedPointer<Rhd2000DataBlock> dataBlock;
-		Array<Rhd2000EvalBoard::BoardDataSource> enabledStreams;
+		std::unique_ptr<RHXDataBlock> dataBlock;
+		UsbVersion usbVersion;
+
+		std::unique_ptr<okCFrontPanel> frontPanelLib;
 
 		/** True if device is available*/
 		bool deviceFound;
@@ -280,6 +310,69 @@ namespace RhythmNode
 
         /** Stores names of channels */
 		StringArray channelNames;
+
+		/** Cable length settings */
+		struct CableLength
+		{
+			float portA = 0.914f;
+			float portB = 0.914f;
+			float portC = 0.914f;
+			float portD = 0.914f;
+			float portE = 0.914f;
+			float portF = 0.914f;
+			float portG = 0.914f;
+			float portH = 0.914f;
+		};
+
+		/** Dsp settings*/
+		struct Dsp
+		{
+			bool enabled = true;
+			double cutoffFreq = 0.5;
+			double upperBandwidth = 7500.0f;
+			double lowerBandwidth = 1.0f;
+		};
+
+		/** struct containing board settings*/
+		struct Settings
+		{
+			bool acquireAux = false;
+			bool acquireAdc = false;
+
+			bool fastSettleEnabled = false;
+			bool fastTTLSettleEnabled = false;
+			int fastSettleTTLChannel = -1;
+			bool ttlMode = false;
+
+			Dsp dsp;
+
+			int noiseSlicerLevel;
+
+			bool desiredDAChpfState;
+			double desiredDAChpf;
+			float boardSampleRate = 30000.f;
+			int savedSampleRateIndex = 16;
+
+			CableLength cableLength;
+
+			int audioOutputL = -1;
+			int audioOutputR = -1;
+			bool ledsEnabled = true;
+			bool newScan = true;
+			int numberingScheme = 1;
+			uint16 clockDivideFactor;
+
+		} settings;
+
+		unsigned int blockSize;
+
+		/** Data buffers*/
+		float thisSample[MAX_NUM_CHANNELS];
+
+		float auxBuffer[MAX_NUM_CHANNELS]; // aux inputs are only sampled every 4th sample, so use this to buffer the
+										   // samples so they can be handles just like the regular neural channels later
+
+		float auxSamples[MAX_NUM_DATA_STREAMS][3];
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(DeviceThread);
 	};
