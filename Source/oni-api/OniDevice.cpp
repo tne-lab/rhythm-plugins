@@ -36,7 +36,7 @@ OniDevice::OniDevice() :
     AbstractRHXController(ControllerOEECP5, AmplifierSampleRate::SampleRate30000Hz)
 {
     // initialize oni context
-    ctx = oni_create_ctx("riffa"); // "riffa" is the driver name
+    
 
     oni_init_ctx(ctx, 0); // 0 is the host index. You can use -1 to get default slot
 }
@@ -48,25 +48,14 @@ OniDevice::~OniDevice()
 
 int OniDevice::open(const std::string& boardSerialNumber)
 {
+   ctx = oni_create_ctx("ft600"); // "ft600" is the driver name for the usb 
+   if (ctx == NULL) return -1;
    
-    oni_size_t num_devs;
-    size_t num_devs_sz = sizeof(num_devs);
-    oni_get_opt(ctx, ONI_OPT_NUMDEVICES, &num_devs, &num_devs_sz);
-
-    size_t devices_sz = sizeof(oni_device_t) * num_devs;
-    oni_device_t* devices = (oni_device_t*) malloc(devices_sz);
-    oni_get_opt(ctx, ONI_OPT_DEVICETABLE, devices, &devices_sz);
-
-    for (int i = 0; i < num_devs; i++)
-    {
-        oni_device_t* dev = devices + i;
-        std::cout << "Device Index: " << dev->idx <<
-            ", Device ID: " << dev->id <<
-            ", Read size: " << dev->read_size <<
-            ", Write size: " << dev->write_size << std::endl;
-    }
-
-    free(devices);
+   if ( oni_init_ctx(ctx, 0) != ONI_ESUCCESS)
+   {
+       oni_destroy_ctx(ctx);
+       return -2;
+   }
 
     return 1;
 }
@@ -104,6 +93,7 @@ bool OniDevice::isRunning()
 // Flush all remaining data out of the FIFO.  (This function should only be called when SPI data acquisition has been stopped.)
 void OniDevice::flush()
 {
+    //ONI COMMENTS: flush is not needed, as stopping acquisition flushes the board buffers automatically.
     /*std::lock_guard<std::mutex> lockOk(okMutex);
 
     if (type == ControllerRecordUSB3) {
@@ -216,6 +206,32 @@ bool OniDevice::readDataBlocks(int numBlocks, std::deque<RHXDataBlock*>& dataQue
 // Return total number of bytes read.
 long OniDevice::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
 {
+    
+    int nSamples; //ONI TODO: For ONI the unit is a sample. We need to know how many samples are required 
+
+    int samplesRead = 0;
+    size_t bufferIndex = 0;
+    
+    do {
+        oni_frame_t* frame;
+        /***
+        A note on how oni_read_frame works. The call does not actually transfer single frames. There is a ONI_OPT_BLOCKREADSIZE parameter that sets the actual transfer size.
+        The first time oni_read_frame is called, it triggers a transfer of said size into a buffer. Subsequent calls of oni_read_frame return a frame from said buffer in a
+        no-copy manner (i.e.: data is a pointer to the already existing buffer). If there is not enough data in the buffer for a new frame, a new transfer is triggered
+        ***/
+        oni_read_frame(ctx, frame);
+        if (frame->dev_idx == DEVICE_RHYTHM) 
+        {
+            //this is terribly inefficient and will probably a usb thread.
+            //A better option could be to refactor DeviceThread::updateBuffer so it can convert frame by frame without the extra copy required here
+            //This could be done by filling an array of frame pointers, maybe.
+
+            memcpy(buffer+bufferIndex,frame->data+8,frame->data_sz-8);
+            bufferIndex += frame->data_sz-8;
+        }
+        oni_destroy_frame(frame);
+    } while (samplesRead < nSamples);
+    
     /*std::lock_guard<std::mutex> lockOk(okMutex);
 
     unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
@@ -278,7 +294,6 @@ void OniDevice::setMaxTimeStep(unsigned int maxTimeStep)
 // changed, since cable delay calculations are based on the clock frequency!
 void OniDevice::setCableDelay(BoardPort port, int delay)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
     int bitShift = 0;
 
     if ((delay < 0) || (delay > 15)) {
@@ -324,8 +339,10 @@ void OniDevice::setCableDelay(BoardPort port, int delay)
         std::cerr << "Error in OniDevice::setCableDelay: unknown port.\n";
     }
 
-    dev->SetWireInValue(WireInMisoDelay, delay << bitShift, 0x0000000f << bitShift);
-    dev->UpdateWireIns();*/
+    oni_reg_val_t value;
+    oni_read_reg(ctx. DEVICE_RHYTHM, Rhythm_Registers::CABLE_DELAY, &value); //read the current value
+    value =  (value & (~(0xf < bitShift))) | (delay << bitShift); //clear only the relevant bits and set them to the new delay
+    oni_write_reg(ctx, DEVICE_RHYTHM, Rhythm_Registers::CABLE_DELAY, value);
 }
 
 // Turn on or off DSP settle function in the FPGA.  (Only executes when CONVERT commands are sent.)
@@ -395,16 +412,20 @@ void OniDevice::setDataSource(int stream, BoardDataSource dataSource)
 // ControllerStimRecordUSB2.
 void OniDevice::setTtlOut(const int* ttlOutArray)
 {
-    /*if (type == ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
+ 
 
-    int ttlOut = 0;
+    int32_t ttlOut = 0;
     for (int i = 0; i < 16; ++i) {
         if (ttlOutArray[i] > 0)
             ttlOut += 1 << i;
     }
-    dev->SetWireInValue(WireInTtlOut_R, ttlOut);
-    dev->UpdateWireIns();*/
+    oni_frame_t* frame;
+    if (oni_create_frame(ctx, &frame, DEVICE_TTL, &ttlOut, sizeof(ttlOut)) == ONI_ESUCCESS)
+    {
+        oni_write_frame(ctx, frame);
+        oni_destroy_frame(frame);
+    }   
+    
 }
 
 // Set manual value for DACs.

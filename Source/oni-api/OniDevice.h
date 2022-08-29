@@ -126,6 +126,54 @@ private:
     void forceAllDataStreamsOff() override;
     
     oni_ctx ctx;
+    
+    enum Rhythm_Registers 
+    {
+        ENABLE = 0,
+        MODE,
+        MAX_TIMESTEP,
+        CABLE_DELAY,
+        AUXCMD_BANK_1,
+        AUXCMD_BANK_2,
+        AUXCMD_BANK_3,
+        MAX_AUXCMD_INDEX_1,
+        MAX_AUXCMD_INDEX_2,
+        MAX_AUXCMD_INDEX_3,
+        LOOP_AUXCMD_INDEX_1,
+        LOOP_AUXCMD_INDEX_2,
+        LOOP_AUXCMD_INDEX_3,
+        DATA_STREAM_1-8_SEL,
+        DATA_STREAM_9-16_SEL,
+        DATA_STREAM_EN,
+        EXTERNAL_FAST_SETTLE,
+        EXTERNAL_DIGOUT_A,
+        EXTERNAL_DIGOUT_B,
+        EXTERNAL_DIGOUT_C,
+        EXTERNAL_DIGOUT_D,
+        SYNC_CLKOUT_DIVIDE,
+        DAC_CTL,
+        DAC_SEL_1,
+        DAC_SEL_2,
+        DAC_SEL_3,
+        DAC_SEL_4,
+        DAC_SEL_5,
+        DAC_SEL_6,
+        DAC_SEL_7,
+        DAC_SEL_8,
+        DAC_THRESH_1,
+        DAC_THRESH_2,
+        DAC_THRESH_3,
+        DAC_THRESH_4,
+        DAC_THRESH_5,
+        DAC_THRESH_6,
+        DAC_THRESH_7,
+        DAC_THRESH_8,
+        HPF 
+    }
+    
+    const oni_dev_idx_t DEVICE_RHYTHM = 0x0101;
+    const oni_dev_idx_t DEVICE_TTL = 0x0102;
+    const oni_dev_idx_t DEVICE_DAC = 0x0103;
    
 };
 
