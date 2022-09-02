@@ -107,7 +107,7 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
     }
 
     char dll_date[32], dll_time[32];
-    std::string serialNumber = "1613000E2W";
+    std::string serialNumber = "";
 
     okFrontPanelDLL_GetVersion(dll_date, dll_time);
 
@@ -147,8 +147,6 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
             std::cout << "USB Version: " << usbVersion << std::endl;
         }
     }
-
-    frontPanelLib.reset();
 
     AmplifierSampleRate ampSampleRate = AmplifierSampleRate::SampleRate30000Hz;
 
@@ -219,17 +217,23 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
                 "Ok.");
         }
 
-        device->uploadFPGABitfile(bitfilename.toStdString());
+        success = device->uploadFPGABitfile(bitfilename.toStdString());
+
+    } 
+
+    if (success)
+    {
+        deviceFound = true;
 
         LOGD("Initializing device.");
 
         device->initialize();
 
-        deviceFound = true;
-    } 
+        int maxNumHeadstages = (boardType == RHD_RECORDING_CONTROLLER) ? 16 : 8;
 
-    if (success)
-    {
+        for (int i = 0; i < maxNumHeadstages; i++)
+            headstages.add(new Headstage(i, maxNumHeadstages));
+
         scanPorts();
         
         for (int k = 0; k < 8; k++)
@@ -249,7 +253,8 @@ DeviceThread::~DeviceThread()
 
     LOGD("Closing device.");
     
-    device->resetFpga();
+    if (deviceFound)
+        device->resetFpga();
 
     delete[] dacStream;
     delete[] dacChannels;
@@ -397,10 +402,15 @@ Array<int> DeviceThread::getDACchannels() const
 
 void DeviceThread::scanPorts()
 {
+    
+    LOGD("Scanning ports.");
+
     if (!deviceFound) //Safety to avoid crashes if board not present
     {
         return;
     }
+
+    LOGD("Stopping impedance thread.");
 
     impedanceThread->stopThreadSafely();
 
@@ -412,13 +422,13 @@ void DeviceThread::scanPorts()
     std::vector<int> commandStream;
     std::vector<int> numChannelsOnPort;
 
+    LOGD("Searching for connected chips...");
     device->findConnectedChips(chipType, portIndex, commandStream, numChannelsOnPort);
 
     // initialize headstage objects
-
     for (int i = 0; i < chipType.size(); i++)
     {
-        LOGC(int(chipType[i]), " ", portIndex[i], " ", commandStream[i], " ", numChannelsOnPort[i]);
+        LOGC(int(chipType[i]), " ", portIndex[i], " ", commandStream[i]);
     }
 }
 

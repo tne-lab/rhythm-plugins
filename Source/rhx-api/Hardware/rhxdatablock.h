@@ -38,6 +38,9 @@ const int USBHeaderSizeInBytes = 8;
 const uint64_t HeaderRecordUSB2 = 0xc691199927021942UL;
 const uint64_t HeaderRecordUSB3 = 0xd7a22aaa38132a53UL;
 const uint64_t HeaderStimRecordUSB2 = 0x8d542c8a49712f0bUL;
+const uint64_t HeaderOEOpalKellyUSB2 = 0xc691199927021942UL;
+const uint64_t HeaderOEOpalKellyUSB3 = 0xc691199927021942UL;
+const uint64_t HeaderOEECP5 = 0xc691199927021942UL;
 
 class RHXDataBlock
 {
@@ -112,8 +115,6 @@ private:
     int* boardDacDataInternal;
 
     void allocateMemory();
-
-    
 
     inline int convertUsbWord(const uint8_t* usbBuffer, int index)
     {

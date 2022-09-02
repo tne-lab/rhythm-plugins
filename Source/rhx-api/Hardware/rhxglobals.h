@@ -67,9 +67,10 @@ enum ControllerType {
     ControllerRecordUSB2 = 0,
     ControllerRecordUSB3 = 1,
     ControllerStimRecordUSB2 = 2,
-    ControllerOEOpalKellyUSB2 = 3,
-    ControllerOEOpalKellyUSB3 = 4,
-    ControllerOEECP5 = 5
+    ControllerOpenEphys = 3,
+    ControllerOEOpalKellyUSB2 = 4,
+    ControllerOEOpalKellyUSB3 = 5,
+    ControllerOEECP5 = 6
 };
 
 enum DemoSelections {

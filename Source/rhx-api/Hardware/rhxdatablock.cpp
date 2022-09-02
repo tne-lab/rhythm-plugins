@@ -180,24 +180,27 @@ int RHXDataBlock::boardDacData(int channel, int t) const
     return boardDacDataInternal[(t * 8) + channel];
 }
 
-int RHXDataBlock::samplesPerDataBlock(ControllerType /* type_ */)
+int RHXDataBlock::samplesPerDataBlock(ControllerType type_)
 {
-//    switch (type_) {
-//    case ControllerRecordUSB2:
-//        // return 60;
-//    case ControllerStimRecordUSB2:
-//    case ControllerRecordUSB3:
-//        return 128;
-//    default:
-//        return 0;
-//    }
-    return 128;
+    switch (type_) {
+    case ControllerRecordUSB2:
+    case  ControllerStimRecordUSB2:
+         return 60;
+    case ControllerOEOpalKellyUSB2:
+        return 300;
+    case ControllerRecordUSB3:
+        return 128;
+    case ControllerOEOpalKellyUSB3:
+    case ControllerOEECP5:
+        return 256;
+    default:
+        return 0;
+    }
 }
 
 int RHXDataBlock::samplesPerDataBlock() const
 {
-//    return samplesPerDataBlock(type);
-    return 128;
+    return samplesPerDataBlock(type);
 }
 
 // Return the number of RHX data blocks that should be read over the USB interface each time for an approximate
@@ -238,6 +241,9 @@ int RHXDataBlock::channelsPerStream(ControllerType type_)
     switch (type_) {
     case ControllerRecordUSB2:
     case ControllerRecordUSB3:
+    case ControllerOEOpalKellyUSB2:
+    case ControllerOEOpalKellyUSB3:
+    case ControllerOEECP5:
         return 32;
     case ControllerStimRecordUSB2:
         return 16;
@@ -251,6 +257,9 @@ int RHXDataBlock::numAuxChannels(ControllerType type_)
     switch (type_) {
     case ControllerRecordUSB2:
     case ControllerRecordUSB3:
+    case ControllerOEOpalKellyUSB2:
+    case ControllerOEOpalKellyUSB3:
+    case ControllerOEECP5:
         return 3;
     case ControllerStimRecordUSB2:
         return 4;
@@ -265,9 +274,18 @@ unsigned int RHXDataBlock::dataBlockSizeInWords(ControllerType type_, int numDat
     case ControllerRecordUSB2:
         return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_) + 1) + 8 + 2);
         // 4 = magic number; 2 = time stamp; 36 = (32 amp channels + 3 aux commands + 1 filler word); 8 = ADCs; 2 = TTL in/out
+    case ControllerOEOpalKellyUSB2:
+        return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_) + 1) + 8 + 2);
+        // 4 = magic number; 2 = time stamp; 36 = (32 amp channels + 3 aux commands + 1 filler word); 8 = ADCs; 2 = TTL in/out
     case ControllerRecordUSB3:
         return samplesPerDataBlock(type_) * (4 + 2 + (numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_))) + (numDataStreams_ % 4) + 8 + 2);
         // 4 = magic number; 2 = time stamp; 35 = (32 amp channels + 3 aux commands); 0-3 filler words; 8 = ADCs; 2 = TTL in/out
+    case ControllerOEOpalKellyUSB3:
+        return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_) + 1) + 8 + 2);
+        // 4 = magic number; 2 = time stamp; 36 = (32 amp channels + 3 aux commands + 1 filler word); 8 = ADCs; 2 = TTL in/out
+    case ControllerOEECP5:
+        return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_) + 1) + 8 + 2);
+        // 4 = magic number; 2 = time stamp; 36 = (32 amp channels + 3 aux commands + 1 filler word); 8 = ADCs; 2 = TTL in/out
     case ControllerStimRecordUSB2:
         return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (2 * (channelsPerStream(type_) + numAuxChannels(type_)) + 4) + 8 + 8 + 2);
         // 4 = magic number; 2 = time stamp; 20 = (16 amp channels + 4 aux commands, each 32 bit results);
@@ -286,6 +304,12 @@ uint64_t RHXDataBlock::headerMagicNumber(ControllerType type_)
         return HeaderStimRecordUSB2;
     case ControllerRecordUSB3:
         return HeaderRecordUSB3;
+    case ControllerOEOpalKellyUSB2:
+        return HeaderOEOpalKellyUSB2;
+    case ControllerOEOpalKellyUSB3:
+        return HeaderOEOpalKellyUSB3;
+    case ControllerOEECP5:
+        return HeaderOEECP5;
     default:
         return 0;
     }
@@ -301,7 +325,12 @@ bool RHXDataBlock::checkUsbHeader(const uint8_t* usbBuffer, int index, Controlle
     uint64_t header = headerMagicNumber(type_);
 
     // Just check first byte initially to speed up cases where header doesn't match.
-    if (usbBuffer[index] != (uint8_t) (header & 0xffU)) return false;
+    if (usbBuffer[index] != (uint8_t)(header & 0xffU))
+    {
+        //std::cout << "Magic number mismatch. Received " << int(usbBuffer[index]) << ", expected " << (header & 0xffU) << std::endl;
+    
+        return false;
+    }
 
     uint64_t x1 = usbBuffer[index];
     uint64_t x2 = usbBuffer[index + 1];
@@ -314,7 +343,9 @@ bool RHXDataBlock::checkUsbHeader(const uint8_t* usbBuffer, int index, Controlle
 
     uint64_t usbHeader = (x8 << 56) + (x7 << 48) + (x6 << 40) + (x5 << 32) + (x4 << 24) + (x3 << 16) + (x2 << 8) + (x1 << 0);
 
-    return (usbHeader == header);
+    //std::cout << "Actual header: " << usbHeader << ", expected " << header << std::endl;
+
+    return usbHeader == header;
 }
 
 bool RHXDataBlock::checkUsbHeader(const uint8_t* usbBuffer, int index) const
@@ -388,20 +419,33 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
     int highWord, index1, index2;
 
     for (int t = 0; t < samplesPerDataBlock(); ++t) {
+        
+        //std::cout << "Sample number: " << t << std::endl;
+        //std::cout << "Index: " << index << std::endl;
+
         if (!checkUsbHeader(usbBuffer, index)) {
             std::cerr << "Error in RHXDataBlock::fillFromUsbBuffer: Incorrect header.\n";
+            break;
         }
-        index += 8;
+
+        index += 8; // magic number header width (bytes)
         timeStampInternal[t] = convertUsbTimeStamp(usbBuffer, index);
-        index += 4;
+        //std::cout << "Timestamp: " << timeStampInternal[t] << std::endl;
+        index += 4; // timestamp width
 
         // Read auxiliary command results 0-2 (for stim/record controller, read auxiliary command results 1-3)
         index1 = t * numDataStreams * numAuxChannels();
-        for (int channel = numAuxChannels() - 3; channel < numAuxChannels(); ++channel) {
+
+        for (int channel = numAuxChannels() - 3; channel < numAuxChannels(); ++channel) 
+        {
             index2 = channel * numDataStreams;
-            for (int stream = 0; stream < numDataStreams; ++stream) {
+            
+            for (int stream = 0; stream < numDataStreams; ++stream) 
+            {
+                
                 auxiliaryDataInternal[index1 + index2 + stream] = convertUsbWord(usbBuffer, index);
                 index += 2;
+                
                 if (type == ControllerStimRecordUSB2) {
                     if (channel == 2) {
                         highWord = convertUsbWord(usbBuffer,index); // The top 16 bits will be either all 1's (results of a WRITE command)
@@ -433,7 +477,8 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
             }
         }
 
-        if (type == ControllerStimRecordUSB2) {
+        if (type == ControllerStimRecordUSB2) 
+        {
             // Read auxiliary command 0 results (see above for auxiliary command 1-3 results).
             for (int stream = 0; stream < numDataStreams; ++stream) {
                 auxiliaryDataInternal[index1 + stream] = convertUsbWord(usbBuffer, index);
@@ -471,9 +516,10 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
         }
 
         // Skip filler words in each data stream.
-        if (type == ControllerRecordUSB2) {
+        if (type != ControllerRecordUSB3) {
             index += 2 * numDataStreams;
-        } else if (type == ControllerRecordUSB3) {
+        } else 
+        {
             index += 2 * (numDataStreams % 4);
         }
 

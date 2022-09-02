@@ -97,7 +97,7 @@ namespace RhythmNode
         /** DataThread factory */
         static DataThread* createDataThread(SourceNode* sn);
 
-        /** Stores the board type (ACQUISITION_BOARD, ONI_USB, etc.) */
+        /** Stores the board type (ACQUISITION_BOARD, INTAN_RHD_USB, etc.) */
         static BoardType boardType;
         
 		/** Constructor; must specify the type of board used */
