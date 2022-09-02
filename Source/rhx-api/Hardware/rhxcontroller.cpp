@@ -60,9 +60,9 @@ RHXController::~RHXController()
 int RHXController::open(const std::string& boardSerialNumber)
 {
     dev = std::make_unique<okCFrontPanel>();
-    std::cout << "Attempting to connect to device '" << boardSerialNumber << "'\n";
+    std::cout << "Attempting to connect to device '" << boardSerialNumber.c_str() << "'\n";
 
-    okCFrontPanel::ErrorCode result = dev->OpenBySerial(boardSerialNumber);
+    okCFrontPanel::ErrorCode result = dev->OpenBySerial(boardSerialNumber.c_str());
     // Attempt to open device.
     if (result != okCFrontPanel::NoError) {
         dev.reset();

@@ -305,6 +305,9 @@ int AbstractRHXController::maxNumSPIPorts(ControllerType type_)
 {
     switch (type_) {
     case ControllerRecordUSB2:
+    case ControllerOEOpalKellyUSB2:
+    case ControllerOEOpalKellyUSB3:
+    case ControllerOEECP5:
     case ControllerStimRecordUSB2:
         return 4;
     case ControllerRecordUSB3:

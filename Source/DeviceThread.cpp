@@ -35,6 +35,18 @@
 #include "rhx-api/Hardware/rhxcontroller.h"
 #include "oni-api/OniDevice.h"
 
+
+#if defined(_WIN32)
+#define okLIB_NAME "okFrontPanel.dll"
+#define okLIB_EXTENSION "*.dll"
+#elif defined(__APPLE__)
+#define okLIB_NAME "libokFrontPanel.dylib"
+#define okLIB_EXTENSION "*.dylib"
+#elif defined(__linux__)
+#define okLIB_NAME "./libokFrontPanel.so"
+#define okLIB_EXTENSION "*.so"
+#endif
+
 using namespace RhythmNode;
 
 BoardType DeviceThread::boardType = ACQUISITION_BOARD; // initialize static member
@@ -70,17 +82,70 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
     dacThresholds = new float[8];
     dacChannelsToUpdate = new bool[8];
 
+
+#if defined(__APPLE__)
+    File appBundle = File::getSpecialLocation(File::currentApplicationFile);
+    const String executableDirectory = appBundle.getChildFile("Contents/Resources").getFullPathName();
+#else
+    File executable = File::getSpecialLocation(File::currentExecutableFile);
+    const String executableDirectory = executable.getParentDirectory().getFullPathName();
+#endif
+
+    String dirName = executableDirectory;
+    String libraryFilePath = dirName;
+    libraryFilePath += File::getSeparatorString();
+    libraryFilePath += okLIB_NAME;
+
+    std::cout << "DLL search path: " << libraryFilePath << std::endl;
+
+    if (!okFrontPanelDLL_LoadLib(libraryFilePath.getCharPointer())) {
+                std::cerr << "FrontPanel DLL could not be loaded.  " <<
+                        "Make sure this DLL is in the application start directory." << std::endl;
+    }
+
+    char dll_date[32], dll_time[32];
+    std::string serialNumber = "1613000E2W";
+
+    okFrontPanelDLL_GetVersion(dll_date, dll_time);
+
+    std::cout << std::endl << "FrontPanel DLL loaded.  Built: " << dll_date << "  " << dll_time << std::endl;
+
     frontPanelLib = std::make_unique<okCFrontPanel>();
 
-    // TODO Select Serial Number if multiple ones are found
-    std::string serialNumber = frontPanelLib->GetDeviceListSerial(0).c_str();
+    std::cout << std::endl << "Scanning USB for Opal Kelly devices..." << std::endl << std::endl;
 
-    std::cout << "Serial number: " << serialNumber << std::endl;
+    int nDevices = frontPanelLib->GetDeviceCount(); 
 
-    // Populate usbVersion field.
-    usbVersion = (frontPanelLib->GetDeviceListModel(0) == okCFrontPanel::brdXEM6010LX45) ? USB2 : USB3;
+    std::cout << "Found " << nDevices << " Opal Kelly device" << ((nDevices == 1) ? "" : "s") <<
+        " connected:" << std::endl;
 
-    std::cout << "USB Version: " << usbVersion << std::endl;
+    for (int i = 0; i < nDevices; ++i) {
+        std::cout << "  Device #" << i + 1 << ": Opal Kelly " <<
+            frontPanelLib->opalKellyModelName(frontPanelLib->GetDeviceListModel(i)).c_str() <<
+            " with serial number " << frontPanelLib->GetDeviceListSerial(i).c_str() << std::endl;
+    }
+
+    std::cout << std::endl;
+
+    for (int i = 0; i < nDevices; ++i)
+    {
+        okCFrontPanel::BoardModel model = frontPanelLib->GetDeviceListModel(i);
+
+        if (model == OK_PRODUCT_XEM6010LX45 || model == OK_PRODUCT_XEM6310LX45) //the two models we use
+        {
+            serialNumber = serialNumber = frontPanelLib->GetDeviceListSerial(i);
+
+            if (model == OK_PRODUCT_XEM6310LX45)
+                usbVersion = USB3;
+            else
+                usbVersion = USB2;
+
+            std::cout << "Trying to open device with serial " << serialNumber.c_str() << std::endl;
+            std::cout << "USB Version: " << usbVersion << std::endl;
+        }
+    }
+
+    frontPanelLib.reset();
 
     AmplifierSampleRate ampSampleRate = AmplifierSampleRate::SampleRate30000Hz;
 
@@ -101,7 +166,7 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
         device = std::make_unique<OniDevice>();
     
     // 1. attempt to open the device
-    int errorCode = device->open(serialNumber);
+    int errorCode = device->open(serialNumber.c_str());
     
     if (errorCode == -1)
     {
@@ -123,14 +188,6 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
     } 
 
     String bitfilename;
-
-#if defined(__APPLE__)
-    File appBundle = File::getSpecialLocation(File::currentApplicationFile);
-    const String executableDirectory = appBundle.getChildFile("Contents/Resources").getFullPathName();
-#else
-    File executable = File::getSpecialLocation(File::currentExecutableFile);
-    const String executableDirectory = executable.getParentDirectory().getFullPathName();
-#endif
 
     bitfilename = executableDirectory;
     bitfilename += File::getSeparatorString();

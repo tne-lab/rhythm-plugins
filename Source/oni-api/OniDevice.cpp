@@ -35,10 +35,7 @@
 OniDevice::OniDevice() :
     AbstractRHXController(ControllerOEECP5, AmplifierSampleRate::SampleRate30000Hz)
 {
-    // initialize oni context
-    
 
-    oni_init_ctx(ctx, 0); // 0 is the host index. You can use -1 to get default slot
 }
 
 OniDevice::~OniDevice()
@@ -219,7 +216,7 @@ long OniDevice::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
         The first time oni_read_frame is called, it triggers a transfer of said size into a buffer. Subsequent calls of oni_read_frame return a frame from said buffer in a
         no-copy manner (i.e.: data is a pointer to the already existing buffer). If there is not enough data in the buffer for a new frame, a new transfer is triggered
         ***/
-        oni_read_frame(ctx, frame);
+        oni_read_frame(ctx, &frame);
         if (frame->dev_idx == DEVICE_RHYTHM) 
         {
             //this is terribly inefficient and will probably a usb thread.
@@ -340,7 +337,7 @@ void OniDevice::setCableDelay(BoardPort port, int delay)
     }
 
     oni_reg_val_t value;
-    oni_read_reg(ctx. DEVICE_RHYTHM, Rhythm_Registers::CABLE_DELAY, &value); //read the current value
+    //oni_read_reg(ctx. DEVICE_RHYTHM, Rhythm_Registers::CABLE_DELAY, &value); //read the current value
     value =  (value & (~(0xf < bitShift))) | (delay << bitShift); //clear only the relevant bits and set them to the new delay
     oni_write_reg(ctx, DEVICE_RHYTHM, Rhythm_Registers::CABLE_DELAY, value);
 }

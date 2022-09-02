@@ -127,7 +127,7 @@ private:
     
     oni_ctx ctx;
     
-    enum Rhythm_Registers 
+    enum Rhythm_Registers
     {
         ENABLE = 0,
         MODE,
@@ -142,8 +142,8 @@ private:
         LOOP_AUXCMD_INDEX_1,
         LOOP_AUXCMD_INDEX_2,
         LOOP_AUXCMD_INDEX_3,
-        DATA_STREAM_1-8_SEL,
-        DATA_STREAM_9-16_SEL,
+        DATA_STREAM_1, // - 8_SEL,
+        DATA_STREAM_9, // - 16_SEL,
         DATA_STREAM_EN,
         EXTERNAL_FAST_SETTLE,
         EXTERNAL_DIGOUT_A,
@@ -168,8 +168,8 @@ private:
         DAC_THRESH_6,
         DAC_THRESH_7,
         DAC_THRESH_8,
-        HPF 
-    }
+        HPF
+    };
     
     const oni_dev_idx_t DEVICE_RHYTHM = 0x0101;
     const oni_dev_idx_t DEVICE_TTL = 0x0102;

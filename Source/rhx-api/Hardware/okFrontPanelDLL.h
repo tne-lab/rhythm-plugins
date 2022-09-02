@@ -365,14 +365,14 @@ okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_ReadI2C(okFrontPanel_HANDLE hnd,
 okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_FlashEraseSector(okFrontPanel_HANDLE hnd, UINT32 address);
 okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_FlashWrite(okFrontPanel_HANDLE hnd, UINT32 address, UINT32 length, const UINT8 *buf);
 okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_FlashRead(okFrontPanel_HANDLE hnd, UINT32 address, UINT32 length, UINT8 *buf);
-okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_GetFPGABootResetProfile(okFrontPanel_HANDLE hnd, okTFPGAResetProfile *profile);
-okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_GetFPGAJTAGResetProfile(okFrontPanel_HANDLE hnd, okTFPGAResetProfile *profile);
-okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_SetFPGABootResetProfile(okFrontPanel_HANDLE hnd, okTFPGAResetProfile *profile);
-okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_SetFPGAJTAGResetProfile(okFrontPanel_HANDLE hnd, okTFPGAResetProfile *profile);
+//okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_GetFPGABootResetProfile(okFrontPanel_HANDLE hnd, okTFPGAResetProfile *profile);
+//okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_GetFPGAJTAGResetProfile(okFrontPanel_HANDLE hnd, okTFPGAResetProfile *profile);
+//okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_SetFPGABootResetProfile(okFrontPanel_HANDLE hnd, okTFPGAResetProfile *profile);
+//okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_SetFPGAJTAGResetProfile(okFrontPanel_HANDLE hnd, okTFPGAResetProfile *profile);
 okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_ReadRegister(okFrontPanel_HANDLE hnd, UINT32 addr, UINT32 *data);
-okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_ReadRegisterSet(okFrontPanel_HANDLE hnd, okTRegisterSet *set);
+//okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_ReadRegisterSet(okFrontPanel_HANDLE hnd, okTRegisterSet *set);
 okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_WriteRegister(okFrontPanel_HANDLE hnd, UINT32 addr, UINT32 data);
-okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_WriteRegisterSet(okFrontPanel_HANDLE hnd, okTRegisterSet *set);
+//okDLLEXPORT ok_ErrorCode DLL_ENTRY okFrontPanel_WriteRegisterSet(okFrontPanel_HANDLE hnd, okTRegisterSet *set);
 okDLLEXPORT int DLL_ENTRY okFrontPanel_GetHostInterfaceWidth(okFrontPanel_HANDLE hnd);
 okDLLEXPORT Bool DLL_ENTRY okFrontPanel_IsHighSpeed(okFrontPanel_HANDLE hnd);
 okDLLEXPORT ok_BoardModel DLL_ENTRY okFrontPanel_GetBoardModel(okFrontPanel_HANDLE hnd);
@@ -631,6 +631,67 @@ public:
 	long ReadFromPipeOut(int epAddr, long length, unsigned char *data);
 	long WriteToBlockPipeIn(int epAddr, int blockSize, long length, unsigned char *data);
 	long ReadFromBlockPipeOut(int epAddr, int blockSize, long length, unsigned char *data);
+
+	// Return name of Opal Kelly board based on model code.
+	std::string opalKellyModelName(int model) const
+	{
+		switch (model) {
+		case OK_PRODUCT_XEM3001V1:
+			return("XEM3001V1");
+		case OK_PRODUCT_XEM3001V2:
+			return("XEM3001V2");
+		case OK_PRODUCT_XEM3010:
+			return("XEM3010");
+		case OK_PRODUCT_XEM3005:
+			return("XEM3005");
+		case OK_PRODUCT_XEM3001CL:
+			return("XEM3001CL");
+		case OK_PRODUCT_XEM3020:
+			return("XEM3020");
+		case OK_PRODUCT_XEM3050:
+			return("XEM3050");
+		case OK_PRODUCT_XEM9002:
+			return("XEM9002");
+		case OK_PRODUCT_XEM3001RB:
+			return("XEM3001RB");
+		case OK_PRODUCT_XEM5010:
+			return("XEM5010");
+		case OK_PRODUCT_XEM6110LX45:
+			return("XEM6110LX45");
+		case OK_PRODUCT_XEM6001:
+			return("XEM6001");
+		case OK_PRODUCT_XEM6010LX45:
+			return("XEM6010LX45");
+		case OK_PRODUCT_XEM6010LX150:
+			return("XEM6010LX150");
+		case OK_PRODUCT_XEM6110LX150:
+			return("XEM6110LX150");
+		case OK_PRODUCT_XEM6006LX9:
+			return("XEM6006LX9");
+		case OK_PRODUCT_XEM6006LX16:
+			return("XEM6006LX16");
+		case OK_PRODUCT_XEM6006LX25:
+			return("XEM6006LX25");
+		case OK_PRODUCT_XEM5010LX110:
+			return("XEM5010LX110");
+		case OK_PRODUCT_ZEM4310:
+			return("ZEM4310");
+		case OK_PRODUCT_XEM6310LX45:
+			return("XEM6310LX45");
+		case OK_PRODUCT_XEM6310LX150:
+			return("XEM6310LX150");
+		case OK_PRODUCT_XEM6110V2LX45:
+			return("XEM6110V2LX45");
+		case OK_PRODUCT_XEM6110V2LX150:
+			return("XEM6110V2LX150");
+		case OK_PRODUCT_XEM6002LX9:
+			return("XEM6002LX9");
+		case OK_PRODUCT_XEM6320LX130T:
+			return("XEM6320LX130T");
+		default:
+			return("UNKNOWN");
+		}
+	}
 };
 #endif // !defined(FRONTPANELDLL_EXPORTS)
 
