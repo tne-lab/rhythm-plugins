@@ -83,6 +83,7 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
     dacThresholds = new float[8];
     dacChannelsToUpdate = new bool[8];
 
+    // TODO: Check for ONI device and, if found, ignore Opal Kelly library code
 
 #if defined(__APPLE__)
     File appBundle = File::getSpecialLocation(File::currentApplicationFile);
@@ -91,6 +92,7 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
     File executable = File::getSpecialLocation(File::currentExecutableFile);
     const String executableDirectory = executable.getParentDirectory().getFullPathName();
 #endif
+
 
     String dirName = executableDirectory;
     String libraryFilePath = dirName;

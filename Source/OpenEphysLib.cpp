@@ -28,7 +28,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "AcqBoardOutput.h"
 #include "IntanRecordController.h"
 #include "IntanStimRecordController.h"
-#include "OniUSBInterface.h"
 
 #include <string>
 #ifdef WIN32
@@ -39,13 +38,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #endif
 
 using namespace Plugin;
-#define NUM_PLUGINS 3
+#define NUM_PLUGINS 5
 
 extern "C" EXPORT void getLibInfo(Plugin::LibraryInfo* info)
 {
 	info->apiVersion = PLUGIN_API_VER;
 	info->name = "Rhythm Plugins";
-	info->libVersion = "0.1.0";
+	info->libVersion = "0.3.0";
 	info->numPlugins = NUM_PLUGINS;
 }
 
@@ -78,11 +77,6 @@ extern "C" EXPORT int getPluginInfo(int index, Plugin::PluginInfo* info)
         info->type = Plugin::Type::DATA_THREAD;
         info->dataThread.name = "RHS Stim/Rec Controller";
         info->dataThread.creator = &createDataThread<RhythmNode::IntanStimRecordController>;
-        break;
-    case 5:
-        info->type = Plugin::Type::DATA_THREAD;
-        info->dataThread.name = "ONI USB";
-        info->dataThread.creator = &createDataThread<RhythmNode::OniUSBInterface>;
         break;
 	default:
 		return -1;

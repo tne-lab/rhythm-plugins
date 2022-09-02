@@ -41,12 +41,15 @@ class OniDevice : public AbstractRHXController
 {
 
 public:
+
+    /** Constructor */
     OniDevice();
+
+    /** Destructor */
     ~OniDevice();
 
+    /** Returns true if device generates synthetic data */
     bool isSynthetic() const override { return false; }
-    bool isPlayback() const override { return false; }
-    AcquisitionMode acquisitionMode() const override { return LiveMode; }
 
     /** Opens the connection to the board */
     int open(const std::string& boardSerialNumber) override;
