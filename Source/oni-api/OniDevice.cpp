@@ -85,19 +85,18 @@ bool OniDevice::isRunning()
     return false;
 }
 
-//
 void OniDevice::flush()
 {
     //ONI COMMENTS: flush is not needed, as stopping acquisition flushes the board buffers automatically.
 }
 
-// Low-level FPGA reset.  Call when closing application to make sure everything has stopped.
+
 void OniDevice::resetFpga()
 {
-    //dev->ResetFPGA();
+
 }
 
-// Read data block from the USB interface, if one is available.  Return true if data block was available.
+
 bool OniDevice::readDataBlock(RHXDataBlock* dataBlock)
 {
     /*std::lock_guard<std::mutex> lockOk(okMutex);
@@ -129,8 +128,7 @@ bool OniDevice::readDataBlock(RHXDataBlock* dataBlock)
     return true;
 }
 
-// Read a certain number of USB data blocks, if the specified number is available, and append them to queue.
-// Return true if data blocks were available.
+
 bool OniDevice::readDataBlocks(int numBlocks, std::deque<RHXDataBlock*>& dataQueue)
 {
     /*std::lock_guard<std::mutex> lockOk(okMutex);
@@ -171,8 +169,7 @@ bool OniDevice::readDataBlocks(int numBlocks, std::deque<RHXDataBlock*>& dataQue
     return true;
 }
 
-// Read a certain number of USB data blocks, if the specified number is available, and write the raw bytes to a buffer.
-// Return total number of bytes read.
+
 long OniDevice::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
 {
     
@@ -189,6 +186,7 @@ long OniDevice::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
         no-copy manner (i.e.: data is a pointer to the already existing buffer). If there is not enough data in the buffer for a new frame, a new transfer is triggered
         ***/
         oni_read_frame(ctx, &frame);
+
         if (frame->dev_idx == DEVICE_RHYTHM) 
         {
             //this is terribly inefficient and will probably a usb thread.
@@ -198,69 +196,41 @@ long OniDevice::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
             memcpy(buffer+bufferIndex,frame->data+8,frame->data_sz-8);
             bufferIndex += frame->data_sz-8;
         }
+
         oni_destroy_frame(frame);
+
     } while (samplesRead < nSamples);
-    
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
-
-    unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
-
-    if (numWordsInFifo() < numWordsToRead) return 0;
-
-    long result;
-    if (type == ControllerRecordUSB3) {
-        result = dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize, BytesPerWord * numWordsToRead, buffer);
-    }
-    else {
-        result = dev->ReadFromPipeOut(PipeOutData, BytesPerWord * numWordsToRead, buffer);
-    }
-
-    if (result == ok_Failed) {
-        std::cerr << "OniDevice::readDataBlocksRaw: Failure on BT pipe read.  Check block and buffer sizes.\n";
-    }
-    else if (result == ok_Timeout) {
-        std::cerr << "OniDevice::readDataBlocksRaw: Timeout on BT pipe read.  Check block and buffer sizes.\n";
-    }*/
 
     long result = 100;
 
     return result;
 }
 
-// Set the FPGA to run continuously once started (if continuousMode == true) or to run until maxTimeStep is reached
-// (if continuousMode == false).
+// 
 void OniDevice::setContinuousRunMode(bool continuousMode)
 {
 
-    /*if (continuousMode) {
-        dev->SetWireInValue(WireInResetRun, 0x02, 0x02);
+    if (continuousMode) {
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInResetRun, 0x02);
+        //dev->SetWireInValue(WireInResetRun, 0x02, 0x02);
     }
     else {
-        dev->SetWireInValue(WireInResetRun, 0x00, 0x02);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInResetRun, 0x00);
+        //dev->SetWireInValue(WireInResetRun, 0x00, 0x02);
     }
-    dev->UpdateWireIns();*/
+
+    // dev->UpdateWireIns() // not needed?
+
 }
 
-// Set maxTimeStep for cases where continuousMode == false.
 void OniDevice::setMaxTimeStep(unsigned int maxTimeStep)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
 
-    if (type == ControllerRecordUSB3) {
-        dev->SetWireInValue(WireInMaxTimeStep_USB3, maxTimeStep);
-    }
-    else {
-        unsigned int maxTimeStepLsb = maxTimeStep & 0x0000ffff;
-        unsigned int maxTimeStepMsb = maxTimeStep & 0xffff0000;
-        dev->SetWireInValue(WireInMaxTimeStepLsb_USB2, maxTimeStepLsb);
-        dev->SetWireInValue(WireInMaxTimeStepMsb_USB2, maxTimeStepMsb >> 16);
-    }
-    dev->UpdateWireIns();*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPointUSB3::WireInMaxTimeStep_USB3, maxTimeStep);
+    //dev->SetWireInValue(WireInMaxTimeStep_USB3, maxTimeStep);
+
 }
 
-// Set the delay for sampling the MISO line on a particular SPI port (PortA - PortH), in integer clock steps, where
-// each clock step is 1/2800 of a per-channel sampling period.  Note: Cable delay must be updated after sampleRate is
-// changed, since cable delay calculations are based on the clock frequency!
 void OniDevice::setCableDelay(BoardPort port, int delay)
 {
     int bitShift = 0;
@@ -309,86 +279,31 @@ void OniDevice::setCableDelay(BoardPort port, int delay)
     }
 
     oni_reg_val_t value;
-    //oni_read_reg(ctx. DEVICE_RHYTHM, Rhythm_Registers::CABLE_DELAY, &value); //read the current value
+    oni_read_reg(ctx, DEVICE_RHYTHM, Rhythm_Registers::CABLE_DELAY, &value); //read the current value
     value =  (value & (~(0xf < bitShift))) | (delay << bitShift); //clear only the relevant bits and set them to the new delay
     oni_write_reg(ctx, DEVICE_RHYTHM, Rhythm_Registers::CABLE_DELAY, value);
 }
 
-// Turn on or off DSP settle function in the FPGA.  (Only executes when CONVERT commands are sent.)
+
 void OniDevice::setDspSettle(bool enabled)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
-
-    dev->SetWireInValue(WireInResetRun, (enabled ? 0x04 : 0x00), 0x04);
-    dev->UpdateWireIns();*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInResetRun, (enabled ? 0x04 : 0x00));
+    //dev->SetWireInValue(WireInResetRun, (enabled ? 0x04 : 0x00), 0x04);
 }
 
-// Assign a particular data source (e.g., PortA1, PortA2, PortB1,...) to one of the eight available USB data streams (0-7).
-// Used only with ControllerRecordUSB2.
-void OniDevice::setDataSource(int stream, BoardDataSource dataSource)
-{
-    /*if (type != ControllerRecordUSB2) return;
 
-    int bitShift = 0;
-    EndPointRecordUSB2 endPoint;
-
-    if ((stream < 0) || (stream > 7)) {
-        std::cerr << "Error in OniDevice::setDataSource: stream out of range.\n";
-        return;
-    }
-    boardDataSources[stream] = dataSource;
-
-    switch (stream) {
-    case 0:
-        endPoint = WireInDataStreamSel1234_R_USB2;
-        bitShift = 0;
-        break;
-    case 1:
-        endPoint = WireInDataStreamSel1234_R_USB2;
-        bitShift = 4;
-        break;
-    case 2:
-        endPoint = WireInDataStreamSel1234_R_USB2;
-        bitShift = 8;
-        break;
-    case 3:
-        endPoint = WireInDataStreamSel1234_R_USB2;
-        bitShift = 12;
-        break;
-    case 4:
-        endPoint = WireInDataStreamSel5678_R_USB2;
-        bitShift = 0;
-        break;
-    case 5:
-        endPoint = WireInDataStreamSel5678_R_USB2;
-        bitShift = 4;
-        break;
-    case 6:
-        endPoint = WireInDataStreamSel5678_R_USB2;
-        bitShift = 8;
-        break;
-    case 7:
-        endPoint = WireInDataStreamSel5678_R_USB2;
-        bitShift = 12;
-        break;
-    }
-
-    dev->SetWireInValue(endPoint, dataSource << bitShift, 0x000f << bitShift);
-    dev->UpdateWireIns();*/
-}
-
-// Set the 16 bits of the digital TTL output lines on the FPGA high or low according to integer array. Not used with
-// ControllerStimRecordUSB2.
 void OniDevice::setTtlOut(const int* ttlOutArray)
 {
  
-
     int32_t ttlOut = 0;
+
     for (int i = 0; i < 16; ++i) {
         if (ttlOutArray[i] > 0)
             ttlOut += 1 << i;
     }
+
     oni_frame_t* frame;
+
     if (oni_create_frame(ctx, &frame, DEVICE_TTL, &ttlOut, sizeof(ttlOut)) == ONI_ESUCCESS)
     {
         oni_write_frame(ctx, frame);
@@ -397,224 +312,127 @@ void OniDevice::setTtlOut(const int* ttlOutArray)
     
 }
 
-// Set manual value for DACs.
+
 void OniDevice::setDacManual(int value)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
+
     if ((value < 0) || (value > 65535)) {
         std::cerr << "Error in OniDevice::setDacManual: value out of range.\n";
         return;
     }
 
-    dev->SetWireInValue(WireInDacManual, value);
-    dev->UpdateWireIns();*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacManual, value);
+    //dev->SetWireInValue(WireInDacManual, value);
+
 }
 
-// Turn LEDs on or off (Open Ephys boards only)
+
 void OniDevice::enableLeds(bool ledsOn)
 {
-    /*if (type == ControllerOEECP5 || type == ControllerOEOpalKellyUSB2 || type == ControllerOEOpalKellyUSB3)
-    {
-        std::lock_guard<std::mutex> lockOk(okMutex);
 
-        dev->SetWireInValue(WireInMultiUse, ledsOn ? 1 : 0);
-        dev->UpdateWireIns();
-        dev->ActivateTriggerIn(TrigInOpenEphys, 0);
-    }*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, ledsOn ? 1 : 0);
+    //dev->SetWireInValue(WireInMultiUse, ledsOn ? 1 : 0);
+
+    // TODO -- what is the equivalent of this one???
+    //dev->ActivateTriggerIn(TrigInOpenEphys, 0);
+    
 }
 
 // Set output BNC clock divide factor (Open Ephys boards only)
 void OniDevice::setClockDivider(int divide_factor)
 {
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, divide_factor);
+    //dev->SetWireInValue(WireInMultiUse, divide_factor);
 
-    /*if (type == ControllerOEECP5 || type == ControllerOEOpalKellyUSB2 || type == ControllerOEOpalKellyUSB3)
-    {
-        std::lock_guard<std::mutex> lockOk(okMutex);
-        dev->SetWireInValue(WireInMultiUse, divide_factor);
-        dev->UpdateWireIns();
-        dev->ActivateTriggerIn(TrigInOpenEphys, 1);
-    }*/
+    // TODO -- what is the equivalent of this one???
+    //dev->ActivateTriggerIn(TrigInOpenEphys, 1);
+
 }
 
-// Set the eight red LEDs on the Opal Kelly XEM6x10 board according to integer array.
-void OniDevice::setLedDisplay(const int* ledArray)
-{
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
 
-    int ledOut = 0;
-    for (int i = 0; i < 8; ++i) {
-        if (ledArray[i] > 0)
-            ledOut += 1 << i;
-    }
-    switch (type) {
-    case (ControllerRecordUSB2):
-        dev->SetWireInValue(WireInLedDisplay_R_USB2, ledOut);
-        break;
-    case (ControllerRecordUSB3):
-        dev->SetWireInValue(WireInLedDisplay_R_USB3, ledOut);
-        break;
-    case (ControllerStimRecordUSB2):
-        dev->SetWireInValue(WireInLedDisplay_S_USB2, ledOut);
-        break;
-    case (ControllerOEOpalKellyUSB2):
-        dev->SetWireInValue(WireInLedDisplay, ledOut);
-        break;
-    case (ControllerOEOpalKellyUSB3):
-        dev->SetWireInValue(WireInLedDisplay, ledOut);
-        break;
-    }
-    dev->UpdateWireIns();*/
-}
-
-// Set the eight red LEDs on the front panel SPI ports according to integer array. Not used with ControllerRecordUSB2 or Open Ephys boards.
-void OniDevice::setSpiLedDisplay(const int* ledArray)
-{
-    /*if (type == ControllerRecordUSB2 ||
-        type == ControllerOEOpalKellyUSB2 ||
-        type == ControllerOEOpalKellyUSB3 ||
-        type == ControllerOEECP5) return;
-
-    std::lock_guard<std::mutex> lockOk(okMutex);
-
-    int ledOut = 0;
-    for (int i = 0; i < 8; ++i) {
-        if (ledArray[i] > 0)
-            ledOut += 1 << i;
-    }
-
-    if (type == ControllerStimRecordUSB2) {
-        dev->SetWireInValue(WireInLedDisplay_S_USB2, (ledOut << 8), 0xff00);
-    }
-    else if (type == ControllerRecordUSB3) {
-        dev->SetWireInValue(WireInMultiUse, ledOut);
-    }
-
-    dev->UpdateWireIns();
-    if (type == ControllerRecordUSB3) dev->ActivateTriggerIn(TrigInConfig_USB3, 8);*/
-}
-
-// Set the gain level of all eight DAC channels to 2^gain (gain = 0-7).
 void OniDevice::setDacGain(int gain)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
+
     if ((gain < 0) || (gain > 7)) {
         std::cerr << "Error in OniDevice::setDacGain: gain setting out of range.\n";
         return;
     }
 
-    dev->SetWireInValue(WireInResetRun, gain << 13, 0xe000);
-    dev->UpdateWireIns();*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInResetRun, gain << 13);
 }
 
-// Suppress the noise on DAC channels 0 and 1 (the audio channels) between +16*noiseSuppress and -16*noiseSuppress LSBs.
-// (noiseSuppress = 0-127).
+// 
 void OniDevice::setAudioNoiseSuppress(int noiseSuppress)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
 
     if ((noiseSuppress < 0) || (noiseSuppress > 127)) {
         std::cerr << "Error in OniDevice::setAudioNoiseSuppress: noiseSuppress out of range.\n";
         return;
     }
 
-    dev->SetWireInValue(WireInResetRun, noiseSuppress << 6, 0x1fc0);
-    dev->UpdateWireIns();*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInResetRun, noiseSuppress << 6);
+    //dev->SetWireInValue(WireInResetRun, noiseSuppress << 6, 0x1fc0);
 }
 
-// Select which of the TTL inputs 0-15 is used to perform a hardware 'fast settle' (blanking) of the amplifiers if external
-// triggering of fast settling is enabled.
+// 
 void OniDevice::setExternalFastSettleChannel(int channel)
 {
-    /*if (type == ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
 
     if ((channel < 0) || (channel > 15)) {
         std::cerr << "Error in OniDevice::setExternalFastSettleChannel: channel out of range.\n";
         return;
     }
 
-    dev->SetWireInValue(WireInMultiUse, channel);
-    dev->UpdateWireIns();
-    if (type == ControllerRecordUSB3) {
-        dev->ActivateTriggerIn(TrigInConfig_USB3, 7);
-    }
-    else if (type == ControllerRecordUSB2) {
-        dev->ActivateTriggerIn(TrigInExtFastSettle_R_USB2, 1);
-    }*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, channel);
+    //dev->SetWireInValue(WireInMultiUse, channel);
+
+    // dev->ActivateTriggerIn(TrigInConfig_USB3, 7);
 }
 
-// Select which of the TTL inputs 0-15 is used to control the auxiliary digital output pin of the chips connected to
-// a particular SPI port, if external control of auxout is enabled.
+// 
 void OniDevice::setExternalDigOutChannel(BoardPort port, int channel)
 {
-    /*if (type == ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
 
     if ((channel < 0) || (channel > 15)) {
         std::cerr << "Error in OniDevice::setExternalDigOutChannel: channel out of range.\n";
         return;
     }
 
-    dev->SetWireInValue(WireInMultiUse, channel);
-    dev->UpdateWireIns();
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, channel);
 
-    if (type == ControllerRecordUSB2) {
-        switch (port) {
-        case PortA:
-            dev->ActivateTriggerIn(TrigInExtDigOut_R_USB2, 4);
-            break;
-        case PortB:
-            dev->ActivateTriggerIn(TrigInExtDigOut_R_USB2, 5);
-            break;
-        case PortC:
-            dev->ActivateTriggerIn(TrigInExtDigOut_R_USB2, 6);
-            break;
-        case PortD:
-            dev->ActivateTriggerIn(TrigInExtDigOut_R_USB2, 7);
-            break;
-        default:
-            std::cerr << "Error in OniDevice::setExternalDigOutChannel: port out of range.\n";
-        }
+    switch (port) {
+    case PortA:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 24);
+        break;
+    case PortB:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 25);
+        break;
+    case PortC:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 26);
+        break;
+    case PortD:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 27);
+        break;
+    case PortE:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 28);
+        break;
+    case PortF:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 29);
+        break;
+    case PortG:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 30);
+        break;
+    case PortH:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 31);
+        break;
+    default:
+        std::cerr << "Error in OniDevice::setExternalDigOutChannel: port out of range.\n";
     }
-    else if (type == ControllerRecordUSB3) {
-        switch (port) {
-        case PortA:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 24);
-            break;
-        case PortB:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 25);
-            break;
-        case PortC:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 26);
-            break;
-        case PortD:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 27);
-            break;
-        case PortE:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 28);
-            break;
-        case PortF:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 29);
-            break;
-        case PortG:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 30);
-            break;
-        case PortH:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 31);
-            break;
-        default:
-            std::cerr << "Error in OniDevice::setExternalDigOutChannel: port out of range.\n";
-        }
-    }*/
 }
 
-// Set cutoff frequency (in Hz) for optional FPGA-implemented digital high-pass filters associated with DAC outputs on
-// USB interface board.  These one-pole filters can be used to record wideband neural data while viewing only spikes
-// without LFPs on the DAC outputs, for example.  This is useful when using the low-latency FPGA thresholds to detect
-// spikes and produce digital pulses on the TTL outputs, for example.
+// 
 void OniDevice::setDacHighpassFilter(double cutoff)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
 
     // Note that the filter coefficient is a function of the amplifier sample rate, so this
     // function should be called after the sample rate is changed.
@@ -630,23 +448,16 @@ void OniDevice::setDacHighpassFilter(double cutoff)
         filterCoefficient = 65535;
     }
 
-    dev->SetWireInValue(WireInMultiUse, filterCoefficient);
-    dev->UpdateWireIns();
-    if (type == ControllerRecordUSB3) {
-        dev->ActivateTriggerIn(TrigInConfig_USB3, 5);
-    }
-    else {
-        dev->ActivateTriggerIn(TrigInDacHpf_USB2, 1);
-    }*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, filterCoefficient);
+    //dev->SetWireInValue(WireInMultiUse, filterCoefficient);
+
+    //dev->ActivateTriggerIn(TrigInConfig_USB3, 5);
+
 }
 
-// Set thresholds for DAC channels; threshold output signals appear on TTL outputs 0-7.
-// The parameter 'threshold' corresponds to the RHD/RHS chip ADC output value, and must fall in the range of 0 to 65535,
-// where the 'zero' level is 32768.  If trigPolarity is true, voltages equaling or rising above the threshold produce a
-// high TTL output. If trigPolarity is false, voltages equaling or falling below the threshold produce a high TTL output.
+// 
 void OniDevice::setDacThreshold(int dacChannel, int threshold, bool trigPolarity)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
 
     if ((dacChannel < 0) || (dacChannel > 7)) {
         std::cerr << "Error in OniDevice::setDacThreshold: dacChannel out of range.\n";
@@ -659,47 +470,36 @@ void OniDevice::setDacThreshold(int dacChannel, int threshold, bool trigPolarity
     }
 
     // Set threshold level.
-    dev->SetWireInValue(WireInMultiUse, threshold);
-    dev->UpdateWireIns();
-    if (type == ControllerRecordUSB3) {
-        dev->ActivateTriggerIn(TrigInDacConfig_USB3, dacChannel);
-    }
-    else {
-        dev->ActivateTriggerIn(TrigInDacThresh_USB2, dacChannel);
-    }
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, threshold);
+    //dev->SetWireInValue(WireInMultiUse, threshold);
+
+    //dev->ActivateTriggerIn(TrigInDacConfig_USB3, dacChannel);
+
 
     // Set threshold polarity.
-    dev->SetWireInValue(WireInMultiUse, (trigPolarity ? 1 : 0));
-    dev->UpdateWireIns();
-    if (type == ControllerRecordUSB3) {
-        dev->ActivateTriggerIn(TrigInDacConfig_USB3, dacChannel + 8);
-    }
-    else {
-        dev->ActivateTriggerIn(TrigInDacThresh_USB2, dacChannel + 8);
-    }*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, (trigPolarity ? 1 : 0));
+    //dev->SetWireInValue(WireInMultiUse, (trigPolarity ? 1 : 0));
+
+    //dev->ActivateTriggerIn(TrigInDacConfig_USB3, dacChannel + 8);
+
 }
 
-// Set the TTL output mode of the board. mode = 0: All 16 TTL outputs are under manual control mode = 1:
-// Top 8 TTL outputs are under manual control; Bottom 8 TTL outputs are outputs of DAC comparators
+// 
 void OniDevice::setTtlMode(int mode)
 {
-    /*if (type == ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
 
     if ((mode < 0) || (mode > 1)) {
         std::cerr << "Error in OniDevice::setTtlMode: mode out of range.\n";
         return;
     }
 
-    dev->SetWireInValue(WireInResetRun, mode << 3, 0x0008);
-    dev->UpdateWireIns();*/
-}
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInResetRun, mode << 3);
+    //dev->SetWireInValue(WireInResetRun, mode << 3, 0x0008);
 
-// Select an amplifier channel from a particular data stream to be subtracted from all DAC signals.
+}
+ 
 void OniDevice::setDacRerefSource(int stream, int channel)
 {
-    /*if (type == ControllerRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
 
     if (stream < 0 || stream >(maxNumDataStreams() - 1)) {
         std::cerr << "Error in OniDevice::setDacRerefSource: stream out of range.\n";
@@ -711,134 +511,13 @@ void OniDevice::setDacRerefSource(int stream, int channel)
         return;
     }
 
-    if (type == ControllerRecordUSB3) {
-        dev->SetWireInValue(WireInDacReref_R_USB3, (stream << 5) + channel, 0x0000003ff);
-    }
-    else if (type == ControllerStimRecordUSB2) {
-        dev->SetWireInValue(WireInDacReref_S_USB2, (stream << 5) + channel, 0x0000000ff);
-    }
-    dev->UpdateWireIns();*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPointRecordUSB3::WireInDacReref_R_USB3, (stream << 5) + channel);
+    //dev->SetWireInValue(WireInDacReref_R_USB3, (stream << 5) + channel, 0x0000003ff);
+
 }
 
-// Set the given extra states
-void OniDevice::setExtraStates(unsigned int extraStates)
-{
-    /*if (type != ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
-
-    dev->SetWireInValue(WireInExtraStates_S_USB2, extraStates);
-    dev->UpdateWireIns();*/
-}
-
-// Turn on or off automatic stimulation command mode in the FPGA.
-void OniDevice::setStimCmdMode(bool enabled)
-{
-    /*if (type != ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
-
-    dev->SetWireInValue(WireInStimCmdMode_S_USB2, (enabled ? 0x01 : 0x00), 0x01);
-    dev->UpdateWireIns();*/
-}
-
-// Set the voltage threshold to be used for digital triggers on Analog In ports.
-void OniDevice::setAnalogInTriggerThreshold(double voltageThreshold)
-{
-    /*if (type != ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
-
-    int value = (int)(32768 * (voltageThreshold / 10.24) + 32768);
-    if (value < 0) {
-        value = 0;
-    }
-    else if (value > 65535) {
-        value = 65535;
-    }
-
-    dev->SetWireInValue(WireInAdcThreshold_S_USB2, value);
-    dev->UpdateWireIns();*/
-}
-
-// Set state of manual stimulation trigger 0-7 (e.g., from keypresses).
-void OniDevice::setManualStimTrigger(int trigger, bool triggerOn)
-{
-   /* if (type != ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
-
-    if ((trigger < 0) || (trigger > 7)) {
-        std::cerr << "Error in OniDevice::setManualStimTrigger: trigger out of range.\n";
-        return;
-    }
-
-    dev->SetWireInValue(WireInManualTriggers_S_USB2, (triggerOn ? 1 : 0) << trigger, 1 << trigger);
-    dev->UpdateWireIns();*/
-}
-
-// The first four boolean parameters determine if global settling should be applied to particular SPI ports A-D.
-// If global settling is enabled, the amp settle function will be applied to ALL channels on a headstage when any one
-// channel asserts amp settle. If the last boolean parameter is set true, global settling will be applied across all
-// headstages: if any one channel asserts amp settle, then amp settle will be asserted on all channels, across all connected
-// headstages.
-void OniDevice::setGlobalSettlePolicy(bool settleWholeHeadstageA, bool settleWholeHeadstageB, bool settleWholeHeadstageC,
-    bool settleWholeHeadstageD, bool settleAllHeadstages)
-{
-    /*if (type != ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
-
-    int value;
-
-    value = (settleAllHeadstages ? 16 : 0) + (settleWholeHeadstageA ? 1 : 0) + (settleWholeHeadstageB ? 2 : 0) +
-        (settleWholeHeadstageC ? 4 : 0) + (settleWholeHeadstageD ? 8 : 0);
-
-    dev->SetWireInValue(WireInGlobalSettleSelect_S_USB2, value, 0x001f);
-    dev->UpdateWireIns();*/
-}
-
-// Set the function of Digital Out ports 1-8.
-// true = Digital Out port controlled by DAC threshold-based spike detector ... false = Digital Out port controlled by digital
-// sequencer.  Note: Digital Out ports 9-16 are always controlled by a digital sequencer.
-void OniDevice::setTtlOutMode(bool mode1, bool mode2, bool mode3, bool mode4, bool mode5, bool mode6, bool mode7, bool mode8)
-{
-    /*if (type != ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
-
-    int value = 0;
-    value += mode1 ? 1 : 0;
-    value += mode2 ? 2 : 0;
-    value += mode3 ? 4 : 0;
-    value += mode4 ? 8 : 0;
-    value += mode5 ? 16 : 0;
-    value += mode6 ? 32 : 0;
-    value += mode7 ? 64 : 0;
-    value += mode8 ? 128 : 0;
-
-    dev->SetWireInValue(WireInTtlOutMode_S_USB2, value, 0x000000ff);
-    dev->UpdateWireIns();*/
-}
-
-// Select amp settle mode for all connected chips: useFastSettle false = amplifier low frequency cutoff select
-// (recommended mode) ... useFastSettle true = amplifier fast settle (legacy mode from RHD2000 series chips)
-void OniDevice::setAmpSettleMode(bool useFastSettle)
-{
-    /*if (type != ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
-
-    dev->SetWireInValue(WireInResetRun, (useFastSettle ? 0x08 : 0x00), 0x08); // set amp_settle_mode (0 = amplifier low frequency cutoff select; 1 = amplifier fast settle)
-    dev->UpdateWireIns();*/
-}
-
-// Select charge recovery mode for all connected chips: useSwitch false = current-limited charge recovery drivers ...
-// useSwitch true = charge recovery switch
-void OniDevice::setChargeRecoveryMode(bool useSwitch)
-{
-    /*if (type != ControllerStimRecordUSB2) return;
-    dev->SetWireInValue(WireInResetRun, (useSwitch ? 0x10 : 0x00), 0x10); // set charge_recov_mode (0 = current-limited charge recovery drivers; 1 = charge recovery switch)
-    dev->UpdateWireIns();*/
-}
-
-// Set the per-channel sampling rate of the RHD/RHS chips connected to the FPGA.
 bool OniDevice::setSampleRate(AmplifierSampleRate newSampleRate)
 {
-    //std::lock_guard<std::mutex> lockOk(okMutex);
 
     // Assuming a 100 MHz reference clock is provided to the FPGA, the programmable FPGA clock frequency
     // is given by:
@@ -893,7 +572,7 @@ bool OniDevice::setSampleRate(AmplifierSampleRate newSampleRate)
     // pulse DCM_prog_trigger high (e.g., using an okTriggerIn module).  If this module is reset, it
     // reverts to a per-channel sampling rate of 30.0 kS/s.
 
-    /*unsigned long M, D;
+    unsigned long M, D;
 
     switch (newSampleRate) {
     case SampleRate1000Hz:
@@ -974,25 +653,20 @@ bool OniDevice::setSampleRate(AmplifierSampleRate newSampleRate)
     while (isDcmProgDone() == false) {}
 
     // Reprogram clock synthesizer.
-    dev->SetWireInValue(WireInDataFreqPll, (256 * M + D));
-    dev->UpdateWireIns();
-    if (type == ControllerRecordUSB3) {
-        dev->ActivateTriggerIn(TrigInConfig_USB3, 0);
-    }
-    else {
-        dev->ActivateTriggerIn(TrigInDcmProg_USB2, 0);
-    }
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDataFreqPll, (256 * M + D));
+    //dev->SetWireInValue(WireInDataFreqPll, (256 * M + D));
+
+    //dev->ActivateTriggerIn(TrigInConfig_USB3, 0);
 
     // Wait for DataClkLocked = 1 before allowing data acquisition to continue.
-    while (isDataClockLocked() == false) {}*/
+    while (isDataClockLocked() == false) {}
 
     return true;
 }
 
-// Enable or disable one of the 32 available USB data streams (0-31).
+
 void OniDevice::enableDataStream(int stream, bool enabled)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
 
     if (stream < 0 || stream >(maxNumDataStreams() - 1)) {
         std::cerr << "Error in OniDevice::enableDataStream: stream out of range.\n";
@@ -1001,278 +675,199 @@ void OniDevice::enableDataStream(int stream, bool enabled)
 
     if (enabled) {
         if (dataStreamEnabled[stream] == 0) {
-            dev->SetWireInValue(WireInDataStreamEn, 0x00000001 << stream, 0x00000001 << stream);
-            dev->UpdateWireIns();
+
+            oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDataStreamEn, 0x00000001 << stream);
+            //dev->SetWireInValue(WireInDataStreamEn, 0x00000001 << stream, 0x00000001 << stream);
+   
             dataStreamEnabled[stream] = 1;
             numDataStreams++;
         }
     }
     else {
         if (dataStreamEnabled[stream] == 1) {
-            dev->SetWireInValue(WireInDataStreamEn, 0x00000000 << stream, 0x00000001 << stream);
-            dev->UpdateWireIns();
+
+            oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDataStreamEn, 0x00000000 << stream);
+            //dev->SetWireInValue(WireInDataStreamEn, 0x00000000 << stream, 0x00000001 << stream);
+
             dataStreamEnabled[stream] = 0;
             numDataStreams--;
         }
-    }*/
+    }
 }
 
-// Enable or disable DAC channel (0-7).
+
 void OniDevice::enableDac(int dacChannel, bool enabled)
 {
-   /* std::lock_guard<std::mutex> lockOk(okMutex);
 
     if ((dacChannel < 0) || (dacChannel > 7)) {
         std::cerr << "Error in OniDevice::enableDac: dacChannel out of range.\n";
         return;
     }
 
-    unsigned int enableVal = 0x0200;
-    if (type == ControllerRecordUSB3) enableVal = 0x0800;
+    unsigned int enableVal = 0x0800;
 
     switch (dacChannel) {
     case 0:
-        dev->SetWireInValue(WireInDacSource1, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource1, (enabled ? enableVal : 0));
+        //dev->SetWireInValue(WireInDacSource1, (enabled ? enableVal : 0), enableVal);
         break;
     case 1:
-        dev->SetWireInValue(WireInDacSource2, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource2, (enabled ? enableVal : 0));
+        //dev->SetWireInValue(WireInDacSource2, (enabled ? enableVal : 0), enableVal);
         break;
     case 2:
-        dev->SetWireInValue(WireInDacSource3, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource3, (enabled ? enableVal : 0));
+        //dev->SetWireInValue(WireInDacSource3, (enabled ? enableVal : 0), enableVal);
         break;
     case 3:
-        dev->SetWireInValue(WireInDacSource4, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource4, (enabled ? enableVal : 0));
+        //dev->SetWireInValue(WireInDacSource4, (enabled ? enableVal : 0), enableVal);
         break;
     case 4:
-        dev->SetWireInValue(WireInDacSource5, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource5, (enabled ? enableVal : 0));
+        //dev->SetWireInValue(WireInDacSource5, (enabled ? enableVal : 0), enableVal);
         break;
     case 5:
-        dev->SetWireInValue(WireInDacSource6, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource6, (enabled ? enableVal : 0));
+        //dev->SetWireInValue(WireInDacSource6, (enabled ? enableVal : 0), enableVal);
         break;
     case 6:
-        dev->SetWireInValue(WireInDacSource7, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource7, (enabled ? enableVal : 0));
+        //dev->SetWireInValue(WireInDacSource7, (enabled ? enableVal : 0), enableVal);
         break;
     case 7:
-        dev->SetWireInValue(WireInDacSource8, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource8, (enabled ? enableVal : 0));
+        //dev->SetWireInValue(WireInDacSource8, (enabled ? enableVal : 0), enableVal);
         break;
     }
-    dev->UpdateWireIns();*/
+
 }
 
-// Enable external triggering of RHD amplifier hardware 'fast settle' function (blanking).
-// If external triggering is enabled, the fast settling of amplifiers on all connected chips will be controlled in real time
-// via one of the 16 TTL inputs.
+
 void OniDevice::enableExternalFastSettle(bool enable)
 {
-    /*if (type == ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
 
-    dev->SetWireInValue(WireInMultiUse, enable ? 1 : 0);
-    dev->UpdateWireIns();
-    if (type == ControllerRecordUSB3) {
-        dev->ActivateTriggerIn(TrigInConfig_USB3, 6);
-    }
-    else if (type == ControllerRecordUSB2) {
-        dev->ActivateTriggerIn(TrigInExtFastSettle_R_USB2, 0);
-    }*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, enable ? 1 : 0);
+    //dev->SetWireInValue(WireInMultiUse, enable ? 1 : 0);
+
+    //dev->ActivateTriggerIn(TrigInConfig_USB3, 6);
+
 }
 
-// Enable external control of RHD2000 auxiliary digital output pin (auxout).
-// If external control is enabled, the digital output of all chips connected to a selected SPI port will be controlled in
-// real time via one of the 16 TTL inputs.
+// .
 void OniDevice::enableExternalDigOut(BoardPort port, bool enable)
 {
-   /* if (type == ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
 
-    dev->SetWireInValue(WireInMultiUse, enable ? 1 : 0);
-    dev->UpdateWireIns();
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, enable ? 1 : 0);
+    //dev->SetWireInValue(WireInMultiUse, enable ? 1 : 0);
 
-    if (type == ControllerRecordUSB2) {
-        switch (port) {
-        case PortA:
-            dev->ActivateTriggerIn(TrigInExtDigOut_R_USB2, 0);
-            break;
-        case PortB:
-            dev->ActivateTriggerIn(TrigInExtDigOut_R_USB2, 1);
-            break;
-        case PortC:
-            dev->ActivateTriggerIn(TrigInExtDigOut_R_USB2, 2);
-            break;
-        case PortD:
-            dev->ActivateTriggerIn(TrigInExtDigOut_R_USB2, 3);
-            break;
-        default:
-            std::cerr << "Error in OniDevice::enableExternalDigOut: port out of range.\n";
-        }
+    switch (port) {
+    case PortA:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 16);
+        break;
+    case PortB:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 17);
+        break;
+    case PortC:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 18);
+        break;
+    case PortD:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 19);
+        break;
+    case PortE:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 20);
+        break;
+    case PortF:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 21);
+        break;
+    case PortG:
+        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 22);
+        break;
+    case PortH:
+       //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 23);
+        break;
+    default:
+        std::cerr << "Error in OniDevice::enableExternalDigOut: port out of range.\n";
     }
-    else if (type == ControllerRecordUSB3) {
-        switch (port) {
-        case PortA:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 16);
-            break;
-        case PortB:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 17);
-            break;
-        case PortC:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 18);
-            break;
-        case PortD:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 19);
-            break;
-        case PortE:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 20);
-            break;
-        case PortF:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 21);
-            break;
-        case PortG:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 22);
-            break;
-        case PortH:
-            dev->ActivateTriggerIn(TrigInDacConfig_USB3, 23);
-            break;
-        default:
-            std::cerr << "Error in OniDevice::enableExternalDigOut: port out of range.\n";
-        }
-    }*/
+ 
 }
 
-// Enable optional FPGA-implemented digital high-pass filters associated with DAC outputs on USB interface board.
-// These one-pole filters can be used to record wideband neural data while viewing only spikes without LFPs on the
-// DAC outputs, for example.  This is useful when using the low-latency FPGA thresholds to detect spikes and produce
-// digital pulses on the TTL outputs, for example.
+
 void OniDevice::enableDacHighpassFilter(bool enable)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
 
-    dev->SetWireInValue(WireInMultiUse, enable ? 1 : 0);
-    dev->UpdateWireIns();
-    if (type == ControllerRecordUSB3) {
-        dev->ActivateTriggerIn(TrigInConfig_USB3, 4);
-    }
-    else {
-        dev->ActivateTriggerIn(TrigInDacHpf_USB2, 0);
-    }*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, enable ? 1 : 0);
+
+    //dev->ActivateTriggerIn(TrigInConfig_USB3, 4);
+
 }
 
-// Enable DAC rereferencing, where a selected amplifier channel is subtracted from all DACs in real time.
 void OniDevice::enableDacReref(bool enabled)
 {
-    /*if (type == ControllerRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
 
-    if (type == ControllerRecordUSB3) {
-        dev->SetWireInValue(WireInDacReref_R_USB3, (enabled ? 0x00000400 : 0x00000000), 0x00000400);
-    }
-    else if (type == ControllerStimRecordUSB2) {
-        dev->SetWireInValue(WireInDacReref_S_USB2, (enabled ? 0x00000100 : 0x00000000), 0x00000100);
-    }
-    dev->UpdateWireIns();*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, (enabled ? 0x00000400 : 0x00000000));
+    //dev->SetWireInValue(WireInDacReref_R_USB3, (enabled ? 0x00000400 : 0x00000000), 0x00000400);
+
 }
 
-// Enable DC amplifier conversion.
-void OniDevice::enableDcAmpConvert(bool enable)
-{
-    /*if (type != ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
 
-    dev->SetWireInValue(WireInDcAmpConvert_S_USB2, (enable ? 1 : 0));
-    dev->UpdateWireIns();*/
-}
-
-// Enable auxiliary commands slots 0-3 on all data streams (0-7).  This disables automatic stimulation control on all
-// data streams.
-void OniDevice::enableAuxCommandsOnAllStreams()
-{
-    /*if (type != ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
-
-    dev->SetWireInValue(WireInAuxEnable_S_USB2, 0x00ff, 0x00ff);
-    dev->UpdateWireIns();*/
-}
-
-// Enable auxiliary commands slots 0-3 on one selected data stream, and disable auxiliary command slots on all other
-// data streams.  This disables automatic stimulation control on the selected stream and enables automatic stimulation control
-// on all other streams.
-void OniDevice::enableAuxCommandsOnOneStream(int stream)
-{
-    /*if (type != ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
-
-    if (stream < 0 || stream >(maxNumDataStreams() - 1)) {
-        std::cerr << "Error in OniDevice::enableAuxCommandsOnOneStream: stream out of range.\n";
-        return;
-    }
-
-    dev->SetWireInValue(WireInAuxEnable_S_USB2, 0x0001 << stream, 0x00ff);
-    dev->UpdateWireIns();*/
-}
-
-// Assign a particular data stream (0-31) to a DAC channel (0-7).  Setting stream to 32 selects DacManual value.
 void OniDevice::selectDacDataStream(int dacChannel, int stream)
 {
-    /* std::lock_guard<std::mutex> lockOk(okMutex);
 
     if ((dacChannel < 0) || (dacChannel > 7)) {
         std::cerr << "Error in OniDevice::selectDacDataStream: dacChannel out of range.\n";
         return;
     }
 
-    int maxStream = 0;
-    switch (type) {
-    case ControllerRecordUSB2:
-        maxStream = 9;
-        break;
-    case ControllerRecordUSB3:
-        maxStream = 32;
-        break;
-    case ControllerStimRecordUSB2:
-        maxStream = 8;
-        break;
-    }
+    int maxStream = 16;
 
     if (stream < 0 || stream > maxStream) {
         std::cerr << "Error in OniDevice::selectDacDataStream: stream out of range.\n";
         return;
     }
 
-    unsigned int mask = 0x01e0;
-    if (type == ControllerRecordUSB3) mask = 0x07e0;
+    unsigned int mask = 0x07e0;
 
     switch (dacChannel) {
     case 0:
-        dev->SetWireInValue(WireInDacSource1, stream << 5, mask);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource1, stream << 5);
+        //dev->SetWireInValue(WireInDacSource1, stream << 5, mask);
         break;
     case 1:
-        dev->SetWireInValue(WireInDacSource2, stream << 5, mask);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource2, stream << 5);
+        //dev->SetWireInValue(WireInDacSource2, stream << 5, mask);
         break;
     case 2:
-        dev->SetWireInValue(WireInDacSource3, stream << 5, mask);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource3, stream << 5);
+        //dev->SetWireInValue(WireInDacSource3, stream << 5, mask);
         break;
     case 3:
-        dev->SetWireInValue(WireInDacSource4, stream << 5, mask);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource4, stream << 5);
+        //dev->SetWireInValue(WireInDacSource4, stream << 5, mask);
         break;
     case 4:
-        dev->SetWireInValue(WireInDacSource5, stream << 5, mask);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource5, stream << 5);
+        //dev->SetWireInValue(WireInDacSource5, stream << 5, mask);
         break;
     case 5:
-        dev->SetWireInValue(WireInDacSource6, stream << 5, mask);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource6, stream << 5);
+        //dev->SetWireInValue(WireInDacSource6, stream << 5, mask);
         break;
     case 6:
-        dev->SetWireInValue(WireInDacSource7, stream << 5, mask);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource7, stream << 5);
+        //dev->SetWireInValue(WireInDacSource7, stream << 5, mask);
         break;
     case 7:
-        dev->SetWireInValue(WireInDacSource8, stream << 5, mask);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource8, stream << 5);
+        //dev->SetWireInValue(WireInDacSource8, stream << 5, mask);
         break;
     }
-    dev->UpdateWireIns(); */
+
 }
 
-// Assign a particular amplifier channel (0-31) to a DAC channel (0-7).
+
 void OniDevice::selectDacDataChannel(int dacChannel, int dataChannel)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
 
     if ((dacChannel < 0) || (dacChannel > 7)) {
         std::cerr << "Error in OniDevice::selectDacDataChannel: dacChannel out of range.\n";
@@ -1286,39 +881,46 @@ void OniDevice::selectDacDataChannel(int dacChannel, int dataChannel)
 
     switch (dacChannel) {
     case 0:
-        dev->SetWireInValue(WireInDacSource1, dataChannel << 0, 0x001f);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource1, dataChannel << 0);
+        //dev->SetWireInValue(WireInDacSource1, dataChannel << 0, 0x001f);
         break;
     case 1:
-        dev->SetWireInValue(WireInDacSource2, dataChannel << 0, 0x001f);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource2, dataChannel << 0);
+        //dev->SetWireInValue(WireInDacSource2, dataChannel << 0, 0x001f);
         break;
     case 2:
-        dev->SetWireInValue(WireInDacSource3, dataChannel << 0, 0x001f);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource3, dataChannel << 0);
+        //dev->SetWireInValue(WireInDacSource3, dataChannel << 0, 0x001f);
         break;
     case 3:
-        dev->SetWireInValue(WireInDacSource4, dataChannel << 0, 0x001f);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource4, dataChannel << 0);
+        //dev->SetWireInValue(WireInDacSource4, dataChannel << 0, 0x001f);
         break;
     case 4:
-        dev->SetWireInValue(WireInDacSource5, dataChannel << 0, 0x001f);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource5, dataChannel << 0);
+        //dev->SetWireInValue(WireInDacSource5, dataChannel << 0, 0x001f);
         break;
     case 5:
-        dev->SetWireInValue(WireInDacSource6, dataChannel << 0, 0x001f);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource6, dataChannel << 0);
+        //dev->SetWireInValue(WireInDacSource6, dataChannel << 0, 0x001f);
         break;
     case 6:
-        dev->SetWireInValue(WireInDacSource7, dataChannel << 0, 0x001f);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource7, dataChannel << 0);
+        //dev->SetWireInValue(WireInDacSource7, dataChannel << 0, 0x001f);
         break;
     case 7:
-        dev->SetWireInValue(WireInDacSource8, dataChannel << 0, 0x001f);
+        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource8, dataChannel << 0);
+        //dev->SetWireInValue(WireInDacSource8, dataChannel << 0, 0x001f);
         break;
     }
-    dev->UpdateWireIns();*/
+
 }
 
-// Specify a command sequence length (endIndex = 0-1023) and command loop index (0-1023) for a particular auxiliary
-// command slot (AuxCmd1, AuxCmd2, or AuxCmd3).
+
 void OniDevice::selectAuxCommandLength(AuxCmdSlot auxCommandSlot, int loopIndex, int endIndex)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
-    int maxIndex = (type == ControllerStimRecordUSB2) ? 8192 : 1024;
+
+    int maxIndex = 1024;
 
     if (loopIndex < 0 || loopIndex > maxIndex - 1) {
         std::cerr << "Error in OniDevice::selectAuxCommandLength: loopIndex out of range.\n";
@@ -1330,69 +932,37 @@ void OniDevice::selectAuxCommandLength(AuxCmdSlot auxCommandSlot, int loopIndex,
         return;
     }
 
-    switch (type) {
-    case (ControllerRecordUSB2):
-        switch (auxCommandSlot) {
-        case AuxCmd1:
-            dev->SetWireInValue(WireInAuxCmdLoop1_R_USB2, loopIndex);
-            dev->SetWireInValue(WireInAuxCmdLength1_R_USB2, endIndex);
-            break;
-        case AuxCmd2:
-            dev->SetWireInValue(WireInAuxCmdLoop2_R_USB2, loopIndex);
-            dev->SetWireInValue(WireInAuxCmdLength2_R_USB2, endIndex);
-            break;
-        case AuxCmd3:
-            dev->SetWireInValue(WireInAuxCmdLoop3_R_USB2, loopIndex);
-            dev->SetWireInValue(WireInAuxCmdLength3_R_USB2, endIndex);
-            break;
-        case AuxCmd4:
-            // Should not be reached, as AuxCmd4 is Stim-only.
-            break;
-        }
-        dev->UpdateWireIns();
+    switch (auxCommandSlot) {
+    case AuxCmd1:
+        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdLoop1, loopIndex);
+        //dev->SetWireInValue(WireInAuxCmdLoop_R_USB3, loopIndex, 0x000003ff);
+        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdLength1, endIndex);
+        //dev->SetWireInValue(WireInAuxCmdLength_R_USB3, endIndex, 0x000003ff);
         break;
-    case (ControllerRecordUSB3):
-        switch (auxCommandSlot) {
-        case AuxCmd1:
-            dev->SetWireInValue(WireInAuxCmdLoop_R_USB3, loopIndex, 0x000003ff);
-            dev->SetWireInValue(WireInAuxCmdLength_R_USB3, endIndex, 0x000003ff);
-            break;
-        case AuxCmd2:
-            dev->SetWireInValue(WireInAuxCmdLoop_R_USB3, loopIndex << 10, 0x000003ff << 10);
-            dev->SetWireInValue(WireInAuxCmdLength_R_USB3, endIndex << 10, 0x000003ff << 10);
-            break;
-        case AuxCmd3:
-            dev->SetWireInValue(WireInAuxCmdLoop_R_USB3, loopIndex << 20, 0x000003ff << 20);
-            dev->SetWireInValue(WireInAuxCmdLength_R_USB3, endIndex << 20, 0x000003ff << 20);
-            break;
-        case AuxCmd4:
-            // Should not be reached, as AuxCmd4 is Stim-only.
-            break;
-        }
-        dev->UpdateWireIns();
+    case AuxCmd2:
+        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdLoop2, loopIndex << 10);
+        //dev->SetWireInValue(WireInAuxCmdLoop_R_USB3, loopIndex << 10, 0x000003ff << 10);
+        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdLength2, endIndex << 10);
+        //dev->SetWireInValue(WireInAuxCmdLength_R_USB3, endIndex << 10, 0x000003ff << 10);
         break;
-    case (ControllerStimRecordUSB2):
-        int auxCommandIndex = (int)auxCommandSlot;
-        if ((auxCommandIndex < 0) || (auxCommandIndex > 3)) {
-            std::cerr << "Error in OniDevice::selectAuxCommandLength: auxCommandSlot out of range.\n";
-        }
+    case AuxCmd3:
+        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdLoop3, loopIndex << 20);
+        //dev->SetWireInValue(WireInAuxCmdLoop_R_USB3, loopIndex << 20, 0x000003ff << 20);
+        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdLength3, endIndex << 20);
+        //dev->SetWireInValue(WireInAuxCmdLength_R_USB3, endIndex << 20, 0x000003ff << 20);
+        break;
+    case AuxCmd4:
+        // Should not be reached, as AuxCmd4 is Stim-only.
+        break;
+    }
 
-        dev->SetWireInValue(WireInMultiUse, loopIndex);
-        dev->UpdateWireIns();
-        dev->ActivateTriggerIn(TrigInAuxCmdLength_S_USB2, auxCommandIndex + 4);
-        dev->SetWireInValue(WireInMultiUse, endIndex);
-        dev->UpdateWireIns();
-        dev->ActivateTriggerIn(TrigInAuxCmdLength_S_USB2, auxCommandIndex);
-        break;
-    }*/
+
 }
 
-// Select an auxiliary command slot (AuxCmd1, AuxCmd2, or AuxCmd3) and bank (0-15) for a particular SPI port
-// (PortA - PortH) on the FPGA.
+
 void OniDevice::selectAuxCommandBank(BoardPort port, AuxCmdSlot auxCommandSlot, int bank)
 {
-    /*if (type == ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
+
     int bitShift;
 
     if (auxCommandSlot != AuxCmd1 && auxCommandSlot != AuxCmd2 && auxCommandSlot != AuxCmd3) {
@@ -1433,162 +1003,87 @@ void OniDevice::selectAuxCommandBank(BoardPort port, AuxCmdSlot auxCommandSlot, 
 
     switch (auxCommandSlot) {
     case AuxCmd1:
-        dev->SetWireInValue(WireInAuxCmdBank1_R, bank << bitShift, 0x0000000f << bitShift);
+        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdBank1, bank << bitShift);
+        //dev->SetWireInValue(WireInAuxCmdBank1_R, bank << bitShift, 0x0000000f << bitShift);
         break;
     case AuxCmd2:
-        dev->SetWireInValue(WireInAuxCmdBank2_R, bank << bitShift, 0x0000000f << bitShift);
+        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdBank2, bank << bitShift);
+        //dev->SetWireInValue(WireInAuxCmdBank2_R, bank << bitShift, 0x0000000f << bitShift);
         break;
     case AuxCmd3:
-        dev->SetWireInValue(WireInAuxCmdBank3_R, bank << bitShift, 0x0000000f << bitShift);
+        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdBank3, bank << bitShift);
+        //dev->SetWireInValue(WireInAuxCmdBank3_R, bank << bitShift, 0x0000000f << bitShift);
         break;
     case AuxCmd4:
         // Should not be reached, as AuxCmd4 is Stim-only.
         break;
 
     }
-    dev->UpdateWireIns();*/
+
 }
 
-// Return 4-bit "board mode" input.
 int OniDevice::getBoardMode()
 {
-
-    return 0; //getBoardMode(dev);
+    // not used?
+    return 0; 
 }
 
-// Return number of SPI ports and if I/O expander board is present.
+// 
 int OniDevice::getNumSPIPorts(bool& expanderBoardDetected)
 {
     return 4;
 }
 
-// Set all 16 bits of the digital TTL output lines on the FPGA to zero.  Not used with ControllerStimRecordUSB2.
+// 
 void OniDevice::clearTtlOut()
 {
-   /* if (type == ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
-    dev->SetWireInValue(WireInTtlOut_R, 0x0000);
-    dev->UpdateWireIns();*/
+
+    int ttlOutArray[16];
+
+    setTtlOut(ttlOutArray);
+
 }
 
-// Reset stimulation sequencer units.  This is typically called when data acquisition is stopped.
-// It is possible that a stimulation sequencer could be in the middle of playing out a long pulse train
-// (e.g., 100 stimulation pulses).  If this function is not called, the pulse train will resume after data acquisition
-// is restarted.
-void OniDevice::resetSequencers()
-{
-    /*if (type != ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
 
-    dev->ActivateTriggerIn(TrigInSpiStart, 1);*/
-}
-
-// Set a particular stimulation control register.
-void OniDevice::programStimReg(int stream, int channel, StimRegister reg, int value)
-{
-    /*if (type != ControllerStimRecordUSB2) return;
-    std::lock_guard<std::mutex> lockOk(okMutex);
-
-    dev->SetWireInValue(WireInStimRegAddr_S_USB2, (stream << 8) + (channel << 4) + reg);
-    dev->SetWireInValue(WireInStimRegWord_S_USB2, value);
-    dev->UpdateWireIns();
-    dev->ActivateTriggerIn(TrigInRamAddrReset_S_USB2, 1);*/
-}
-
-// Upload an auxiliary command list to a particular command slot and RAM bank (0-15) on the FPGA.
 void OniDevice::uploadCommandList(const std::vector<unsigned int>& commandList, AuxCmdSlot auxCommandSlot, int bank)
 {
-   /* std::lock_guard<std::mutex> lockOk(okMutex);
 
-    if (type != ControllerStimRecordUSB2) {
-        if (auxCommandSlot != AuxCmd1 && auxCommandSlot != AuxCmd2 && auxCommandSlot != AuxCmd3) {
-            std::cerr << "Error in OniDevice::uploadCommandList: auxCommandSlot out of range.\n";
-            return;
-        }
-
-        if ((bank < 0) || (bank > 15)) {
-            std::cerr << "Error in OniDevice::uploadCommandList: bank out of range.\n";
-            return;
-        }
-
-        for (unsigned int i = 0; i < commandList.size(); ++i) {
-            dev->SetWireInValue(WireInCmdRamData_R, commandList[i]);
-            dev->SetWireInValue(WireInCmdRamAddr_R, i);
-            dev->SetWireInValue(WireInCmdRamBank_R, bank);
-            dev->UpdateWireIns();
-            if (type == ControllerRecordUSB2) {
-                switch (auxCommandSlot) {
-                case AuxCmd1:
-                    dev->ActivateTriggerIn(TrigInRamWrite_R_USB2, 0);
-                    break;
-                case AuxCmd2:
-                    dev->ActivateTriggerIn(TrigInRamWrite_R_USB2, 1);
-                    break;
-                case AuxCmd3:
-                    dev->ActivateTriggerIn(TrigInRamWrite_R_USB2, 2);
-                    break;
-                case AuxCmd4:
-                    // Should not be reached, as AuxCmd4 is Stim-only.
-                    break;
-
-                }
-            }
-            else {
-                switch (auxCommandSlot) {
-                case AuxCmd1:
-                    dev->ActivateTriggerIn(TrigInConfig_USB3, 1);
-                    break;
-                case AuxCmd2:
-                    dev->ActivateTriggerIn(TrigInConfig_USB3, 2);
-                    break;
-                case AuxCmd3:
-                    dev->ActivateTriggerIn(TrigInConfig_USB3, 3);
-                    break;
-                case AuxCmd4:
-                    // Should not be reached, as AuxCmd4 is Stim-only.
-                    break;
-                }
-            }
-        }
+    if (auxCommandSlot != AuxCmd1 && auxCommandSlot != AuxCmd2 && auxCommandSlot != AuxCmd3) {
+        std::cerr << "Error in OniDevice::uploadCommandList: auxCommandSlot out of range.\n";
+        return;
     }
-    else {
-        for (unsigned int i = 0; i < commandList.size(); ++i) {
-            commandBufferMsw[2 * i] = (uint8_t)((commandList[i] & 0x00ff0000) >> 16);
-            commandBufferMsw[2 * i + 1] = (uint8_t)((commandList[i] & 0xff000000) >> 24);
-            commandBufferLsw[2 * i] = (uint8_t)((commandList[i] & 0x000000ff) >> 0);
-            commandBufferLsw[2 * i + 1] = (uint8_t)((commandList[i] & 0x0000ff00) >> 8);
-        }
 
+    if ((bank < 0) || (bank > 15)) {
+        std::cerr << "Error in OniDevice::uploadCommandList: bank out of range.\n";
+        return;
+    }
+
+    for (unsigned int i = 0; i < commandList.size(); ++i) 
+    {
+        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInCmdRamData, commandList[i]);
+        //dev->SetWireInValue(WireInCmdRamData_R, commandList[i]);
+
+        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInCmdRamAddr, i);
+        //dev->SetWireInValue(WireInCmdRamAddr_R, i);
+
+        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInCmdRamBank, bank);
+ 
         switch (auxCommandSlot) {
         case AuxCmd1:
-            dev->ActivateTriggerIn(TrigInRamAddrReset_S_USB2, 0);
-            dev->WriteToPipeIn(PipeInAuxCmd1Msw_S_USB2, 2 * (int)commandList.size(), commandBufferMsw);
-            dev->ActivateTriggerIn(TrigInRamAddrReset_S_USB2, 0);
-            dev->WriteToPipeIn(PipeInAuxCmd1Lsw_S_USB2, 2 * (int)commandList.size(), commandBufferLsw);
+            //dev->ActivateTriggerIn(TrigInConfig_USB3, 1);
             break;
         case AuxCmd2:
-            dev->ActivateTriggerIn(TrigInRamAddrReset_S_USB2, 0);
-            dev->WriteToPipeIn(PipeInAuxCmd2Msw_S_USB2, 2 * (int)commandList.size(), commandBufferMsw);
-            dev->ActivateTriggerIn(TrigInRamAddrReset_S_USB2, 0);
-            dev->WriteToPipeIn(PipeInAuxCmd2Lsw_S_USB2, 2 * (int)commandList.size(), commandBufferLsw);
+            //dev->ActivateTriggerIn(TrigInConfig_USB3, 2);
             break;
         case AuxCmd3:
-            dev->ActivateTriggerIn(TrigInRamAddrReset_S_USB2, 0);
-            dev->WriteToPipeIn(PipeInAuxCmd3Msw_S_USB2, 2 * (int)commandList.size(), commandBufferMsw);
-            dev->ActivateTriggerIn(TrigInRamAddrReset_S_USB2, 0);
-            dev->WriteToPipeIn(PipeInAuxCmd3Lsw_S_USB2, 2 * (int)commandList.size(), commandBufferLsw);
+           // dev->ActivateTriggerIn(TrigInConfig_USB3, 3);
             break;
         case AuxCmd4:
-            dev->ActivateTriggerIn(TrigInRamAddrReset_S_USB2, 0);
-            dev->WriteToPipeIn(PipeInAuxCmd4Msw_S_USB2, 2 * (int)commandList.size(), commandBufferMsw);
-            dev->ActivateTriggerIn(TrigInRamAddrReset_S_USB2, 0);
-            dev->WriteToPipeIn(PipeInAuxCmd4Lsw_S_USB2, 2 * (int)commandList.size(), commandBufferLsw);
-            break;
-        default:
-            std::cerr << "Error in OniDevice::uploadCommandList: auxCommandSlot out of range.\n";
+            // Should not be reached, as AuxCmd4 is Stim-only.
             break;
         }
-    }*/
+    }
+  
 }
 
 // Scan all SPI ports to find all connected RHD/RHS amplifier chips.  Read the chip ID from on-chip ROM
@@ -1609,7 +1104,7 @@ void OniDevice::uploadCommandList(const std::vector<unsigned int>& commandList, 
 int OniDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vector<int>& portIndex, std::vector<int>& commandStream,
     std::vector<int>& numChannelsOnPort)
 {
-    /*int returnValue = 1;    // return 1 == everything okay
+    int returnValue = 1;    // return 1 == everything okay
     int maxNumStreams = maxNumDataStreams();
     int maxSPIPorts = maxNumSPIPorts();
     int maxMISOLines = 2 * maxSPIPorts;
@@ -1885,52 +1380,50 @@ int OniDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vector<i
                 enableDataStream(oldStream, false);    // Disable unused data streams.
             }
         }
-    }*/
+    }
 
-    return 0; // returnValue;
+    return returnValue;
 }
 
 
-// Return the number of 16-bit words in the USB FIFO.  The user should never attempt to read more data than the FIFO
-// currently contains, as it is not protected against underflow.
 unsigned int OniDevice::numWordsInFifo()
 {
-    /*dev->UpdateWireOuts();
 
-    if (type == ControllerRecordUSB3) {
-        lastNumWordsInFifo = dev->GetWireOutValue(WireOutNumWords_USB3);
-    }
-    else {
-        lastNumWordsInFifo = (dev->GetWireOutValue(WireOutNumWordsMsb_USB2) << 16) +
-            dev->GetWireOutValue(WireOutNumWordsLsb_USB2);
-    }
-    numWordsHasBeenUpdated = true;*/
+    oni_reg_val_t numWordsLsb, numWordsMsb;
 
-    return 0; // lastNumWordsInFifo;
+    oni_read_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireOutNumWordsLsb, &numWordsLsb);
+    oni_read_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireOutNumWordsMsb, &numWordsMsb);
+
+    lastNumWordsInFifo = (numWordsMsb << 16) + numWordsLsb;
+    numWordsHasBeenUpdated = true;
+
+    return lastNumWordsInFifo;
 }
 
-// Is variable-frequency clock DCM programming done?
+
 bool OniDevice::isDcmProgDone() const
 {
-    //dev->UpdateWireOuts();
-   // int value = dev->GetWireOutValue(WireOutDataClkLocked);
-    return true; // ((value & 0x0002) > 1);
+
+    oni_reg_val_t value;
+    oni_read_reg(ctx, DEVICE_RHYTHM, EndPoint::WireOutDataClkLocked, &value);
+
+    return ((value & 0x0002) > 1);
 }
 
-// Is variable-frequency clock PLL locked?
+
 bool OniDevice::isDataClockLocked() const
 {
-    /*dev->UpdateWireOuts();
-    int value = dev->GetWireOutValue(WireOutDataClkLocked); */
-    return false; // ((value & 0x0001) > 0);
+    oni_reg_val_t value;
+    oni_read_reg(ctx, DEVICE_RHYTHM, EndPoint::WireOutDataClkLocked, &value);
+
+    return ((value & 0x0001) > 0);
 }
 
-// Force all data streams off, used in FPGA initialization.
+
 void OniDevice::forceAllDataStreamsOff()
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
 
-    dev->SetWireInValue(WireInDataStreamEn, 0x00000000);
-    dev->UpdateWireIns();*/
+    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDataStreamEn, 0x00000000);
+
 }
 

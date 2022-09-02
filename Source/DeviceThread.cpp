@@ -249,7 +249,7 @@ DeviceThread::~DeviceThread()
 
     LOGD("Closing device.");
     
-    //device->close();
+    device->resetFpga();
 
     delete[] dacStream;
     delete[] dacChannels;
