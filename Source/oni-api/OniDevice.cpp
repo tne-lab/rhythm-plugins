@@ -99,31 +99,19 @@ void OniDevice::resetFpga()
 
 bool OniDevice::readDataBlock(RHXDataBlock* dataBlock)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
 
-    unsigned int numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+    oni_frame_t* frame;
 
-    if (numBytesToRead > usbBufferSize) {
-        std::cerr << "Error in OniDevice::readDataBlock: USB buffer size exceeded.  " <<
-            "Increase value of MAX_NUM_BLOCKS.\n";
-        return false;
+    oni_read_frame(ctx, &frame);
+
+    if (frame->dev_idx == DEVICE_RHYTHM)
+    {
+        memcpy(usbBuffer, frame->data + 8, frame->data_sz - 8);
     }
 
-    if (type == ControllerRecordUSB3) {
-        long result = dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize,
-            USB3BlockSize * std::max(numBytesToRead / USB3BlockSize, (unsigned int)1),
-            usbBuffer);
-        if (result == ok_Failed) {
-            std::cerr << "CRITICAL (readDataBlock): Failure on pipe read.  Check block and buffer sizes.\n";
-        }
-        else if (result == ok_Timeout) {
-            std::cerr << "CRITICAL (readDataBlock): Timeout on pipe read.  Check block and buffer sizes.\n";
-        }
-    }
-    else {
-        dev->ReadFromPipeOut(PipeOutData, numBytesToRead, usbBuffer);
-    }
-    dataBlock->fillFromUsbBuffer(usbBuffer, 0);*/
+    oni_destroy_frame(frame);
+
+    dataBlock->fillFromUsbBuffer(usbBuffer, 0);
 
     return true;
 }
@@ -131,40 +119,13 @@ bool OniDevice::readDataBlock(RHXDataBlock* dataBlock)
 
 bool OniDevice::readDataBlocks(int numBlocks, std::deque<RHXDataBlock*>& dataQueue)
 {
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
 
-    unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
-
-    if (numWordsInFifo() < numWordsToRead)
-        return false;
-
-    unsigned int numBytesToRead = BytesPerWord * numWordsToRead;
-
-    if (numBytesToRead > usbBufferSize) {
-        std::cerr << "Error in OniDevice::readDataBlocks: USB buffer size exceeded.  " <<
-            "Increase value of MaxNumBlocksToRead.\n";
-        return false;
-    }
-
-    if (type == ControllerRecordUSB3) {
-        long result = dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize, numBytesToRead, usbBuffer);
-
-        if (result == ok_Failed) {
-            std::cerr << "CRITICAL (readDataBlocks): Failure on pipe read.  Check block and buffer sizes.\n";
-        }
-        else if (result == ok_Timeout) {
-            std::cerr << "CRITICAL (readDataBlocks): Timeout on pipe read.  Check block and buffer sizes.\n";
-        }
-    }
-    else {
-        dev->ReadFromPipeOut(PipeOutData, numBytesToRead, usbBuffer);
-    }
-
-    for (int i = 0; i < numBlocks; ++i) {
+    for (int i = 0; i < numBlocks; ++i) 
+    {
         RHXDataBlock* dataBlock = new RHXDataBlock(type, numDataStreams);
-        dataBlock->fillFromUsbBuffer(usbBuffer, i);
+        readDataBlock(dataBlock);
         dataQueue.push_back(dataBlock);
-    }*/
+    }
 
     return true;
 }
@@ -181,19 +142,23 @@ long OniDevice::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
     do {
         oni_frame_t* frame;
         /***
-        A note on how oni_read_frame works. The call does not actually transfer single frames. There is a ONI_OPT_BLOCKREADSIZE parameter that sets the actual transfer size.
-        The first time oni_read_frame is called, it triggers a transfer of said size into a buffer. Subsequent calls of oni_read_frame return a frame from said buffer in a
-        no-copy manner (i.e.: data is a pointer to the already existing buffer). If there is not enough data in the buffer for a new frame, a new transfer is triggered
+        A note on how oni_read_frame works. The call does not actually transfer single frames. 
+        There is a ONI_OPT_BLOCKREADSIZE parameter that sets the actual transfer size.
+        The first time oni_read_frame is called, it triggers a transfer of said size into a 
+        buffer. Subsequent calls of oni_read_frame return a frame from said buffer in a
+        no-copy manner (i.e.: data is a pointer to the already existing buffer). 
+        If there is not enough data in the buffer for a new frame, a new transfer is triggered.
         ***/
         oni_read_frame(ctx, &frame);
 
         if (frame->dev_idx == DEVICE_RHYTHM) 
         {
-            //this is terribly inefficient and will probably a usb thread.
-            //A better option could be to refactor DeviceThread::updateBuffer so it can convert frame by frame without the extra copy required here
-            //This could be done by filling an array of frame pointers, maybe.
+            // this is terribly inefficient and will probably a usb thread.
+            // A better option could be to refactor DeviceThread::updateBuffer so it can convert 
+            //   frame by frame without the extra copy required here
+            // This could be done by filling an array of frame pointers, maybe.
 
-            memcpy(buffer+bufferIndex,frame->data+8,frame->data_sz-8);
+            memcpy(buffer + bufferIndex, frame->data+8, frame->data_sz-8);
             bufferIndex += frame->data_sz-8;
         }
 
