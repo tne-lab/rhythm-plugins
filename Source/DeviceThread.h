@@ -51,6 +51,7 @@ namespace RhythmNode
 
 	class Headstage;
 	class ImpedanceMeter;
+	class USBThread;
 
 	enum BoardType
 	{
@@ -271,6 +272,9 @@ namespace RhythmNode
         
         /** Thread for impedance measurement */
         ScopedPointer<ImpedanceMeter> impedanceThread;
+
+		/** Thread for data acquisition */
+		ScopedPointer<USBThread> usbThread;
 
 		bool enableHeadstage(int hsNum, bool enabled, int nStr = 1, int strChans = 32);
 

@@ -30,17 +30,18 @@
 #include <chrono>
 #include <cmath>
 
-// This class provides access to and control an ONI-based USB acquisition board
 
 OniDevice::OniDevice() :
-    AbstractRHXController(ControllerOEECP5, AmplifierSampleRate::SampleRate30000Hz)
+    AbstractRHXController(ControllerOEECP5, AmplifierSampleRate::SampleRate30000Hz),
+    ctx(NULL)
 {
 
 }
 
 OniDevice::~OniDevice()
 {
-    oni_destroy_ctx(ctx);
+    if (ctx != NULL)
+        oni_destroy_ctx(ctx);
 }
 
 int OniDevice::open(const std::string& boardSerialNumber)
@@ -57,16 +58,13 @@ int OniDevice::open(const std::string& boardSerialNumber)
     return 1;
 }
 
-// Upload the configuration file (bitfile) to the FPGA.  Return true if successful.
 bool OniDevice::uploadFPGABitfile(const std::string& filename)
 {
     // no bitfile required
 
     return true;
 }
-
-// Reset FPGA.  This clears all auxiliary command RAM banks, clears the USB FIFO, and resets the per-channel sampling
-// rate to 30.0 kS/s/ch.
+ 
 void OniDevice::resetBoard()
 {
 
@@ -74,49 +72,23 @@ void OniDevice::resetBoard()
     oni_set_opt(ctx, ONI_OPT_RESET, &reg, sizeof(oni_size_t));
 }
 
-// Initiate SPI data acquisition.
+
 void OniDevice::run()
 {
     oni_reg_val_t reg = 2;
     oni_set_opt(ctx, ONI_OPT_RESETACQCOUNTER, &reg, sizeof(oni_size_t));
 }
 
-// Is the FPGA currently running?
+
 bool OniDevice::isRunning()
 {
     return false;
 }
 
-// Flush all remaining data out of the FIFO.  (This function should only be called when SPI data acquisition has been stopped.)
+//
 void OniDevice::flush()
 {
     //ONI COMMENTS: flush is not needed, as stopping acquisition flushes the board buffers automatically.
-    /*std::lock_guard<std::mutex> lockOk(okMutex);
-
-    if (type == ControllerRecordUSB3) {
-        dev->SetWireInValue(WireInResetRun, 1 << 16, 1 << 16); // override pipeout block throttle
-        dev->UpdateWireIns();
-
-        while (numWordsInFifo() >= usbBufferSize / BytesPerWord) {
-            dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize, usbBufferSize, usbBuffer);
-        }
-        while (numWordsInFifo() > 0) {
-            dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize,
-                USB3BlockSize * std::max(BytesPerWord * numWordsInFifo() / USB3BlockSize, (unsigned int)1),
-                usbBuffer);
-        }
-
-        dev->SetWireInValue(WireInResetRun, 0 << 16, 1 << 16);
-        dev->UpdateWireIns();
-    }
-    else {
-        while (numWordsInFifo() >= usbBufferSize / BytesPerWord) {
-            dev->ReadFromPipeOut(PipeOutData, usbBufferSize, usbBuffer);
-        }
-        while (numWordsInFifo() > 0) {
-            dev->ReadFromPipeOut(PipeOutData, BytesPerWord * numWordsInFifo(), usbBuffer);
-        }
-    }*/
 }
 
 // Low-level FPGA reset.  Call when closing application to make sure everything has stopped.

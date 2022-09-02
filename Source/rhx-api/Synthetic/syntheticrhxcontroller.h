@@ -39,12 +39,14 @@
 class SyntheticRHXController : public AbstractRHXController
 {
 public:
+
+    /** Constructor */
     SyntheticRHXController(ControllerType type_, AmplifierSampleRate sampleRate_);
+
+    /** Destructor */
     ~SyntheticRHXController();
 
     bool isSynthetic() const override { return true; }
-    bool isPlayback() const override { return false; }
-    AcquisitionMode acquisitionMode() const override { return SyntheticMode; }
     int open(const std::string& /* boardSerialNumber */) override { return 1; }  // Always return 1 to emulate a successful opening.
     bool uploadFPGABitfile(const std::string& /* filename */) override { return true; }
     void resetBoard() override {}

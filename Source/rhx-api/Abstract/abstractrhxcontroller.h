@@ -39,12 +39,6 @@
 #include <deque>
 #include <mutex>
 
-enum AcquisitionMode {
-    LiveMode,
-    SyntheticMode,
-    PlaybackMode
-};
-
 struct StreamChannelPair
 {
     int stream;
@@ -88,7 +82,10 @@ public:
         AuxCmd4 = 3  // AuxCmd4 used only with stim/record controller
     };
 
+    /** Constructor */
     AbstractRHXController(ControllerType type_, AmplifierSampleRate sampleRate_);
+
+    /** Destructor */
     virtual ~AbstractRHXController();
 
     void initialize();
@@ -145,8 +142,6 @@ public:
     StreamChannelPair streamChannelFromWaveName(const std::string& waveName) const;
 
     virtual bool isSynthetic() const = 0;
-    virtual bool isPlayback() const = 0;
-    virtual AcquisitionMode acquisitionMode() const = 0;
     virtual int open(const std::string& boardSerialNumber) = 0;
     virtual bool uploadFPGABitfile(const std::string& filename) = 0;
     virtual void resetBoard() = 0;

@@ -47,12 +47,25 @@ public:
     bool isSynthetic() const override { return false; }
     bool isPlayback() const override { return false; }
     AcquisitionMode acquisitionMode() const override { return LiveMode; }
+
+    /** Opens the connection to the board */
     int open(const std::string& boardSerialNumber) override;
+
+    /** Upload the configuration file (bitfile) to the FPGA. Return true if successful.*/
     bool uploadFPGABitfile(const std::string& filename) override;
+
+    /** Reset FPGA. This clears all auxiliary command RAM banks, clears the USB FIFO, 
+        and resets the per-channel samplingrate to 30.0 kS/s/ch. */
     void resetBoard() override;
 
+    /** Initiate SPI data acquisition. */
     void run() override;
+
+    /** Is the FPGA currently running?*/
     bool isRunning() override;
+
+    /**  Flush all remaining data out of the FIFO.  
+         This function should only be called when SPI data acquisition has been stopped. */
     void flush() override;
     void resetFpga() override;
 

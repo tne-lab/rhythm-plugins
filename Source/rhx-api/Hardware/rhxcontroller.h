@@ -47,8 +47,6 @@ public:
     ~RHXController();
 
     bool isSynthetic() const override { return false; }
-    bool isPlayback() const override { return false; }
-    AcquisitionMode acquisitionMode() const override { return LiveMode; }
     int open(const std::string& boardSerialNumber) override;
     bool uploadFPGABitfile(const std::string& filename) override;
     void resetBoard() override;

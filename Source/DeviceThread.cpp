@@ -30,6 +30,7 @@
 
 #include "ImpedanceMeter.h"
 #include "Headstage.h"
+#include "USBThread.h"
 
 #include "rhx-api/Hardware/rhxglobals.h"
 #include "rhx-api/Hardware/rhxcontroller.h"
@@ -969,6 +970,9 @@ bool DeviceThread::startAcquisition()
     // TODO: Fix this
     blockSize = calculateDataBlockSizeInWords(device->getNumEnabledDataStreams(), usbVersion == USB3, 1);
 
+    LOGD("Starting usb thread with buffer of ", blockSize * 2, " bytes");
+    usbThread->startAcquisition(blockSize * 2);
+
     int ledArray[8] = { 1, 1, 0, 0, 0, 0, 0, 0 };
     device->setLedDisplay(ledArray);
 
@@ -991,6 +995,8 @@ bool DeviceThread::stopAcquisition()
 {
 
     LOGD("DeviceThread stopping acquisition.");
+
+    usbThread->stopAcquisition();
 
     if (isThreadRunning())
     {
@@ -1039,14 +1045,14 @@ bool DeviceThread::stopAcquisition()
 bool DeviceThread::updateBuffer()
 {
             
-    uint8_t* bufferPtr;
+    unsigned char* bufferPtr;
     double ts;
 
     if (usbVersion == USB3 || device->getNumWordsInFifo() >= blockSize)
     {
-        bool return_code;
 
-        return_code = device->readDataBlocksRaw(1, bufferPtr);
+        if (usbThread->usbRead(bufferPtr) == 0)
+            return true;
 
         int index = 0;
         int auxIndex, chanIndex;
