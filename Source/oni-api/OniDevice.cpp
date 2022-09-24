@@ -87,7 +87,7 @@ bool OniDevice::isRunning()
 
 void OniDevice::flush()
 {
-    //ONI COMMENTS: flush is not needed, as stopping acquisition flushes the board buffers automatically.
+    // flush is not needed, as stopping acquisition flushes the board buffers automatically.
 }
 
 
@@ -171,29 +171,36 @@ long OniDevice::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
     return result;
 }
 
-// 
+void OniDevice::oni_write_reg_bit(const oni_ctx ctx,
+    oni_dev_idx_t dev_idx,
+    oni_reg_addr_t addr,
+    int bit_index,
+    bool state)
+{
+    oni_reg_val_t register_value;
+
+    oni_read_reg(ctx, dev_idx, addr, &register_value);
+
+    register_value ^= (-state ^ register_value) & (1UL << bit_index);
+
+    oni_write_reg(ctx, dev_idx, addr, register_value);
+}
+ 
 void OniDevice::setContinuousRunMode(bool continuousMode)
 {
 
-    if (continuousMode) {
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInResetRun, 0x02);
-        //dev->SetWireInValue(WireInResetRun, 0x02, 0x02);
-    }
-    else {
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInResetRun, 0x00);
-        //dev->SetWireInValue(WireInResetRun, 0x00, 0x02);
-    }
-
-    // dev->UpdateWireIns() // not needed?
+    oni_write_reg_bit(ctx,
+        DEVICE_RHYTHM, 
+        MODE, 
+        SPI_RUN_CONTINUOUS,
+        continuousMode);
 
 }
 
 void OniDevice::setMaxTimeStep(unsigned int maxTimeStep)
 {
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPointUSB3::WireInMaxTimeStep_USB3, maxTimeStep);
-    //dev->SetWireInValue(WireInMaxTimeStep_USB3, maxTimeStep);
-
+    oni_write_reg(ctx, DEVICE_RHYTHM, MAX_TIMESTEP, maxTimeStep);
 }
 
 void OniDevice::setCableDelay(BoardPort port, int delay)
@@ -244,16 +251,21 @@ void OniDevice::setCableDelay(BoardPort port, int delay)
     }
 
     oni_reg_val_t value;
-    oni_read_reg(ctx, DEVICE_RHYTHM, Rhythm_Registers::CABLE_DELAY, &value); //read the current value
+    oni_read_reg(ctx, DEVICE_RHYTHM, CABLE_DELAY, &value); //read the current value
     value =  (value & (~(0xf < bitShift))) | (delay << bitShift); //clear only the relevant bits and set them to the new delay
-    oni_write_reg(ctx, DEVICE_RHYTHM, Rhythm_Registers::CABLE_DELAY, value);
+    oni_write_reg(ctx, DEVICE_RHYTHM, CABLE_DELAY, value);
 }
 
 
 void OniDevice::setDspSettle(bool enabled)
 {
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInResetRun, (enabled ? 0x04 : 0x00));
-    //dev->SetWireInValue(WireInResetRun, (enabled ? 0x04 : 0x00), 0x04);
+
+    oni_write_reg_bit(ctx,
+        DEVICE_RHYTHM,
+        MODE,
+        DSP_SETTLE,
+        enabled);
+
 }
 
 
@@ -281,13 +293,7 @@ void OniDevice::setTtlOut(const int* ttlOutArray)
 void OniDevice::setDacManual(int value)
 {
 
-    if ((value < 0) || (value > 65535)) {
-        std::cerr << "Error in OniDevice::setDacManual: value out of range.\n";
-        return;
-    }
-
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacManual, value);
-    //dev->SetWireInValue(WireInDacManual, value);
+    std::cout << "OniDevice::setDacManual not implemented." << std::endl;
 
 }
 
@@ -295,22 +301,19 @@ void OniDevice::setDacManual(int value)
 void OniDevice::enableLeds(bool ledsOn)
 {
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, ledsOn ? 1 : 0);
-    //dev->SetWireInValue(WireInMultiUse, ledsOn ? 1 : 0);
-
-    // TODO -- what is the equivalent of this one???
-    //dev->ActivateTriggerIn(TrigInOpenEphys, 0);
+    oni_write_reg_bit(ctx,
+        DEVICE_RHYTHM,
+        MODE,
+        LED_ENABLE,
+        ledsOn);
     
 }
 
 // Set output BNC clock divide factor (Open Ephys boards only)
 void OniDevice::setClockDivider(int divide_factor)
 {
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, divide_factor);
-    //dev->SetWireInValue(WireInMultiUse, divide_factor);
 
-    // TODO -- what is the equivalent of this one???
-    //dev->ActivateTriggerIn(TrigInOpenEphys, 1);
+    oni_write_reg(ctx, DEVICE_RHYTHM, SYNC_CLKOUT_DIVIDE, divide_factor);
 
 }
 
@@ -318,25 +321,22 @@ void OniDevice::setClockDivider(int divide_factor)
 void OniDevice::setDacGain(int gain)
 {
 
+    // CHECK
+
     if ((gain < 0) || (gain > 7)) {
         std::cerr << "Error in OniDevice::setDacGain: gain setting out of range.\n";
         return;
     }
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInResetRun, gain << 13);
+    oni_write_reg(ctx, DEVICE_RHYTHM, DAC_CTL, gain << 13);
 }
 
 // 
 void OniDevice::setAudioNoiseSuppress(int noiseSuppress)
 {
 
-    if ((noiseSuppress < 0) || (noiseSuppress > 127)) {
-        std::cerr << "Error in OniDevice::setAudioNoiseSuppress: noiseSuppress out of range.\n";
-        return;
-    }
+    std::cout << "OniDevice::setAudioNoiseSuppress not implemented." << std::endl;
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInResetRun, noiseSuppress << 6);
-    //dev->SetWireInValue(WireInResetRun, noiseSuppress << 6, 0x1fc0);
 }
 
 // 
@@ -348,10 +348,8 @@ void OniDevice::setExternalFastSettleChannel(int channel)
         return;
     }
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, channel);
-    //dev->SetWireInValue(WireInMultiUse, channel);
+    oni_write_reg(ctx, DEVICE_RHYTHM, EXTERNAL_FAST_SETTLE, channel);
 
-    // dev->ActivateTriggerIn(TrigInConfig_USB3, 7);
 }
 
 // 
@@ -363,41 +361,34 @@ void OniDevice::setExternalDigOutChannel(BoardPort port, int channel)
         return;
     }
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, channel);
+    oni_reg_addr_t reg;
 
     switch (port) {
     case PortA:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 24);
+        reg = EXTERNAL_DIGOUT_A;
         break;
     case PortB:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 25);
+        reg = EXTERNAL_DIGOUT_B;
         break;
     case PortC:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 26);
+        reg = EXTERNAL_DIGOUT_C;
         break;
     case PortD:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 27);
-        break;
-    case PortE:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 28);
-        break;
-    case PortF:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 29);
-        break;
-    case PortG:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 30);
-        break;
-    case PortH:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 31);
+        reg = EXTERNAL_DIGOUT_D;
         break;
     default:
         std::cerr << "Error in OniDevice::setExternalDigOutChannel: port out of range.\n";
     }
+
+    oni_write_reg(ctx, DEVICE_RHYTHM, reg, channel);
+
 }
 
 // 
 void OniDevice::setDacHighpassFilter(double cutoff)
 {
+
+    // CHECK
 
     // Note that the filter coefficient is a function of the amplifier sample rate, so this
     // function should be called after the sample rate is changed.
@@ -413,16 +404,15 @@ void OniDevice::setDacHighpassFilter(double cutoff)
         filterCoefficient = 65535;
     }
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, filterCoefficient);
-    //dev->SetWireInValue(WireInMultiUse, filterCoefficient);
-
-    //dev->ActivateTriggerIn(TrigInConfig_USB3, 5);
+    oni_write_reg(ctx, DEVICE_RHYTHM, HPF, filterCoefficient);
 
 }
 
 // 
 void OniDevice::setDacThreshold(int dacChannel, int threshold, bool trigPolarity)
 {
+
+    // check
 
     if ((dacChannel < 0) || (dacChannel > 7)) {
         std::cerr << "Error in OniDevice::setDacThreshold: dacChannel out of range.\n";
@@ -434,22 +424,46 @@ void OniDevice::setDacThreshold(int dacChannel, int threshold, bool trigPolarity
         return;
     }
 
+    oni_reg_addr_t reg;
+
+    switch (dacChannel)
+    {
+    case 0:
+        reg = DAC_THRESH_1;
+        break;
+    case 1:
+        reg = DAC_THRESH_2;
+        break;
+    case 2:
+        reg = DAC_THRESH_1;
+        break;
+    case 3:
+        reg = DAC_THRESH_2;
+        break;
+    case 4:
+        reg = DAC_THRESH_1;
+        break;
+    case 5:
+        reg = DAC_THRESH_2;
+        break;
+    case 6:
+        reg = DAC_THRESH_1;
+        break;
+    case 7:
+        reg = DAC_THRESH_2;
+        break;
+    default:
+        std::cout << "Error in OniDevice::setDacThreshold: dacChannel out of range." << std::endl;
+    }
+
+    threshold += 65536 * trigPolarity;
+
     // Set threshold level.
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, threshold);
-    //dev->SetWireInValue(WireInMultiUse, threshold);
-
-    //dev->ActivateTriggerIn(TrigInDacConfig_USB3, dacChannel);
-
-
-    // Set threshold polarity.
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, (trigPolarity ? 1 : 0));
-    //dev->SetWireInValue(WireInMultiUse, (trigPolarity ? 1 : 0));
-
-    //dev->ActivateTriggerIn(TrigInDacConfig_USB3, dacChannel + 8);
+    oni_write_reg(ctx, DEVICE_RHYTHM, reg, threshold);
 
 }
 
-// 
+
 void OniDevice::setTtlMode(int mode)
 {
 
@@ -458,173 +472,25 @@ void OniDevice::setTtlMode(int mode)
         return;
     }
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInResetRun, mode << 3);
-    //dev->SetWireInValue(WireInResetRun, mode << 3, 0x0008);
+    oni_write_reg_bit(ctx,
+        DEVICE_RHYTHM,
+        MODE,
+        TTL_OUT_MODE,
+        mode);
 
 }
  
 void OniDevice::setDacRerefSource(int stream, int channel)
 {
 
-    if (stream < 0 || stream >(maxNumDataStreams() - 1)) {
-        std::cerr << "Error in OniDevice::setDacRerefSource: stream out of range.\n";
-        return;
-    }
-
-    if (channel < 0 || channel > RHXDataBlock::channelsPerStream(type) - 1) {
-        std::cerr << "Error in OniDevice::setDacRerefSource: channel out of range.\n";
-        return;
-    }
-
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPointRecordUSB3::WireInDacReref_R_USB3, (stream << 5) + channel);
-    //dev->SetWireInValue(WireInDacReref_R_USB3, (stream << 5) + channel, 0x0000003ff);
+    std::cerr << "OniDevice::setDacRerefSource: not implemented." << std::endl;
 
 }
 
 bool OniDevice::setSampleRate(AmplifierSampleRate newSampleRate)
 {
 
-    // Assuming a 100 MHz reference clock is provided to the FPGA, the programmable FPGA clock frequency
-    // is given by:
-    //
-    //       FPGA internal clock frequency = 100 MHz * (M/D) / 2
-    //
-    // M and D are "multiply" and "divide" integers used in the FPGA's digital clock manager (DCM) phase-
-    // locked loop (PLL) frequency synthesizer, and are subject to the following restrictions:
-    //
-    //                M must have a value in the range of 2 - 256
-    //                D must have a value in the range of 1 - 256
-    //                M/D must fall in the range of 0.05 - 3.33
-    //
-    // (See pages 85-86 of Xilinx document UG382 "Spartan-6 FPGA Clocking Resources" for more details.)
-    //
-    // This variable-frequency clock drives the state machine that controls all SPI communication
-    // with the RHD2000 chips.  A complete SPI cycle (consisting of one CS pulse and 16 SCLK pulses)
-    // takes 80 clock cycles.  The SCLK period is 4 clock cycles; the CS pulse is high for 14 clock
-    // cycles between commands.
-    //
-    // Rhythm samples all 32 channels and then executes 3 "auxiliary" commands that can be used to read
-    // and write from other registers on the chip, or to sample from the temperature sensor or auxiliary ADC
-    // inputs, for example.  Therefore, a complete cycle that samples from each amplifier channel takes
-    // 80 * (32 + 3) = 80 * 35 = 2800 clock cycles.
-    //
-    // So the per-channel sampling rate of each amplifier is 2800 times slower than the clock frequency.
-    //
-    // Based on these design choices, we can use the following values of M and D to generate the following
-    // useful amplifier sampling rates for electrophsyiological applications:
-    //
-    //   M    D     clkout frequency    per-channel sample rate     per-channel sample period
-    //  ---  ---    ----------------    -----------------------     -------------------------
-    //    7  125          2.80 MHz               1.00 kS/s                 1000.0 usec = 1.0 msec
-    //    7  100          3.50 MHz               1.25 kS/s                  800.0 usec
-    //   21  250          4.20 MHz               1.50 kS/s                  666.7 usec
-    //   14  125          5.60 MHz               2.00 kS/s                  500.0 usec
-    //   35  250          7.00 MHz               2.50 kS/s                  400.0 usec
-    //   21  125          8.40 MHz               3.00 kS/s                  333.3 usec
-    //   14   75          9.33 MHz               3.33 kS/s                  300.0 usec
-    //   28  125         11.20 MHz               4.00 kS/s                  250.0 usec
-    //    7   25         14.00 MHz               5.00 kS/s                  200.0 usec
-    //    7   20         17.50 MHz               6.25 kS/s                  160.0 usec
-    //  112  250         22.40 MHz               8.00 kS/s                  125.0 usec
-    //   14   25         28.00 MHz              10.00 kS/s                  100.0 usec
-    //    7   10         35.00 MHz              12.50 kS/s                   80.0 usec
-    //   21   25         42.00 MHz              15.00 kS/s                   66.7 usec
-    //   28   25         56.00 MHz              20.00 kS/s                   50.0 usec
-    //   35   25         70.00 MHz              25.00 kS/s                   40.0 usec
-    //   42   25         84.00 MHz              30.00 kS/s                   33.3 usec
-    //
-    // To set a new clock frequency, assert new values for M and D (e.g., using okWireIn modules) and
-    // pulse DCM_prog_trigger high (e.g., using an okTriggerIn module).  If this module is reset, it
-    // reverts to a per-channel sampling rate of 30.0 kS/s.
-
-    unsigned long M, D;
-
-    switch (newSampleRate) {
-    case SampleRate1000Hz:
-        M = 7;
-        D = 125;
-        break;
-    case SampleRate1250Hz:
-        M = 7;
-        D = 100;
-        break;
-    case SampleRate1500Hz:
-        M = 21;
-        D = 250;
-        break;
-    case SampleRate2000Hz:
-        M = 14;
-        D = 125;
-        break;
-    case SampleRate2500Hz:
-        M = 35;
-        D = 250;
-        break;
-    case SampleRate3000Hz:
-        M = 21;
-        D = 125;
-        break;
-    case SampleRate3333Hz:
-        M = 14;
-        D = 75;
-        break;
-    case SampleRate4000Hz:
-        M = 28;
-        D = 125;
-        break;
-    case SampleRate5000Hz:
-        M = 7;
-        D = 25;
-        break;
-    case SampleRate6250Hz:
-        M = 7;
-        D = 20;
-        break;
-    case SampleRate8000Hz:
-        M = 112;
-        D = 250;
-        break;
-    case SampleRate10000Hz:
-        M = 14;
-        D = 25;
-        break;
-    case SampleRate12500Hz:
-        M = 7;
-        D = 10;
-        break;
-    case SampleRate15000Hz:
-        M = 21;
-        D = 25;
-        break;
-    case SampleRate20000Hz:
-        M = 28;
-        D = 25;
-        break;
-    case SampleRate25000Hz:
-        M = 35;
-        D = 25;
-        break;
-    case SampleRate30000Hz:
-        M = 42;
-        D = 25;
-        break;
-    default:
-        return false;
-    }
-
-    sampleRate = newSampleRate;
-
-    // Wait for DcmProgDone = 1 before reprogramming clock synthesizer.
-    while (isDcmProgDone() == false) {}
-
-    // Reprogram clock synthesizer.
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDataFreqPll, (256 * M + D));
-    //dev->SetWireInValue(WireInDataFreqPll, (256 * M + D));
-
-    //dev->ActivateTriggerIn(TrigInConfig_USB3, 0);
-
-    // Wait for DataClkLocked = 1 before allowing data acquisition to continue.
-    while (isDataClockLocked() == false) {}
+    std::cerr << "OniDevice::setSampleRate: not implemented." << std::endl;
 
     return true;
 }
@@ -641,9 +507,7 @@ void OniDevice::enableDataStream(int stream, bool enabled)
     if (enabled) {
         if (dataStreamEnabled[stream] == 0) {
 
-            oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDataStreamEn, 0x00000001 << stream);
-            //dev->SetWireInValue(WireInDataStreamEn, 0x00000001 << stream, 0x00000001 << stream);
-   
+            oni_write_reg(ctx, DEVICE_RHYTHM, DATA_STREAM_EN, 0x00000001 << stream);
             dataStreamEnabled[stream] = 1;
             numDataStreams++;
         }
@@ -651,8 +515,7 @@ void OniDevice::enableDataStream(int stream, bool enabled)
     else {
         if (dataStreamEnabled[stream] == 1) {
 
-            oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDataStreamEn, 0x00000000 << stream);
-            //dev->SetWireInValue(WireInDataStreamEn, 0x00000000 << stream, 0x00000001 << stream);
+            oni_write_reg(ctx, DEVICE_RHYTHM, DATA_STREAM_EN, 0x00000000 << stream);
 
             dataStreamEnabled[stream] = 0;
             numDataStreams--;
@@ -673,36 +536,28 @@ void OniDevice::enableDac(int dacChannel, bool enabled)
 
     switch (dacChannel) {
     case 0:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource1, (enabled ? enableVal : 0));
-        //dev->SetWireInValue(WireInDacSource1, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_1, 10, enabled);
         break;
     case 1:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource2, (enabled ? enableVal : 0));
-        //dev->SetWireInValue(WireInDacSource2, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_2, 10, enabled);
         break;
     case 2:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource3, (enabled ? enableVal : 0));
-        //dev->SetWireInValue(WireInDacSource3, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_3, 10, enabled);
         break;
     case 3:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource4, (enabled ? enableVal : 0));
-        //dev->SetWireInValue(WireInDacSource4, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_4, 10, enabled);
         break;
     case 4:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource5, (enabled ? enableVal : 0));
-        //dev->SetWireInValue(WireInDacSource5, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_5, 10, enabled);
         break;
     case 5:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource6, (enabled ? enableVal : 0));
-        //dev->SetWireInValue(WireInDacSource6, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_6, 10, enabled);
         break;
     case 6:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource7, (enabled ? enableVal : 0));
-        //dev->SetWireInValue(WireInDacSource7, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_7, 10, enabled);
         break;
     case 7:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource8, (enabled ? enableVal : 0));
-        //dev->SetWireInValue(WireInDacSource8, (enabled ? enableVal : 0), enableVal);
+        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_8, 10, enabled);
         break;
     }
 
@@ -712,10 +567,11 @@ void OniDevice::enableDac(int dacChannel, bool enabled)
 void OniDevice::enableExternalFastSettle(bool enable)
 {
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, enable ? 1 : 0);
-    //dev->SetWireInValue(WireInMultiUse, enable ? 1 : 0);
-
-    //dev->ActivateTriggerIn(TrigInConfig_USB3, 6);
+    oni_write_reg_bit(ctx,
+        DEVICE_RHYTHM,
+        EXTERNAL_FAST_SETTLE,
+        4,
+        enable);
 
 }
 
@@ -723,37 +579,31 @@ void OniDevice::enableExternalFastSettle(bool enable)
 void OniDevice::enableExternalDigOut(BoardPort port, bool enable)
 {
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, enable ? 1 : 0);
-    //dev->SetWireInValue(WireInMultiUse, enable ? 1 : 0);
+    
+    oni_reg_addr_t addr;
 
     switch (port) {
     case PortA:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 16);
+        addr = EXTERNAL_DIGOUT_A;
         break;
     case PortB:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 17);
+        addr = EXTERNAL_DIGOUT_B;
         break;
     case PortC:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 18);
+        addr = EXTERNAL_DIGOUT_C;
         break;
     case PortD:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 19);
-        break;
-    case PortE:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 20);
-        break;
-    case PortF:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 21);
-        break;
-    case PortG:
-        //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 22);
-        break;
-    case PortH:
-       //dev->ActivateTriggerIn(TrigInDacConfig_USB3, 23);
+        addr = EXTERNAL_DIGOUT_D;
         break;
     default:
         std::cerr << "Error in OniDevice::enableExternalDigOut: port out of range.\n";
     }
+
+    oni_write_reg_bit(ctx,
+        DEVICE_RHYTHM,
+        addr,
+        4,
+        enable);
  
 }
 
@@ -761,17 +611,14 @@ void OniDevice::enableExternalDigOut(BoardPort port, bool enable)
 void OniDevice::enableDacHighpassFilter(bool enable)
 {
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, enable ? 1 : 0);
-
-    //dev->ActivateTriggerIn(TrigInConfig_USB3, 4);
+    oni_write_reg_bit(ctx, DEVICE_RHYTHM, HPF, 16, enable);
 
 }
 
 void OniDevice::enableDacReref(bool enabled)
 {
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInMultiUse, (enabled ? 0x00000400 : 0x00000000));
-    //dev->SetWireInValue(WireInDacReref_R_USB3, (enabled ? 0x00000400 : 0x00000000), 0x00000400);
+    std::cout << "OniDevice::enableDacRefer not implemented." << std::endl;
 
 }
 
@@ -791,42 +638,44 @@ void OniDevice::selectDacDataStream(int dacChannel, int stream)
         return;
     }
 
-    unsigned int mask = 0x07e0;
+    oni_reg_addr_t addr;
 
     switch (dacChannel) {
     case 0:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource1, stream << 5);
-        //dev->SetWireInValue(WireInDacSource1, stream << 5, mask);
+        addr = DAC_SEL_1;
         break;
     case 1:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource2, stream << 5);
-        //dev->SetWireInValue(WireInDacSource2, stream << 5, mask);
+        addr = DAC_SEL_2;
         break;
     case 2:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource3, stream << 5);
-        //dev->SetWireInValue(WireInDacSource3, stream << 5, mask);
+        addr = DAC_SEL_3;
         break;
     case 3:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource4, stream << 5);
-        //dev->SetWireInValue(WireInDacSource4, stream << 5, mask);
+        addr = DAC_SEL_4;
         break;
     case 4:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource5, stream << 5);
-        //dev->SetWireInValue(WireInDacSource5, stream << 5, mask);
+        addr = DAC_SEL_5;
         break;
     case 5:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource6, stream << 5);
-        //dev->SetWireInValue(WireInDacSource6, stream << 5, mask);
+        addr = DAC_SEL_6;
         break;
     case 6:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource7, stream << 5);
-        //dev->SetWireInValue(WireInDacSource7, stream << 5, mask);
+        addr = DAC_SEL_7;
         break;
     case 7:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource8, stream << 5);
-        //dev->SetWireInValue(WireInDacSource8, stream << 5, mask);
+        addr = DAC_SEL_8;
         break;
     }
+
+    oni_reg_val_t register_value;
+
+    oni_read_reg(ctx, DEVICE_RHYTHM, addr, &register_value);
+
+    oni_reg_val_t enabled = register_value >> 10;
+    oni_reg_val_t channel = register_value & 0b11111;
+    oni_reg_val_t new_value = (enabled << 10) + (stream << 5) + channel;
+
+    oni_write_reg(ctx, DEVICE_RHYTHM, addr, new_value);
 
 }
 
@@ -844,40 +693,44 @@ void OniDevice::selectDacDataChannel(int dacChannel, int dataChannel)
         return;
     }
 
+    oni_reg_addr_t addr;
+
     switch (dacChannel) {
     case 0:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource1, dataChannel << 0);
-        //dev->SetWireInValue(WireInDacSource1, dataChannel << 0, 0x001f);
+        addr = DAC_SEL_1;
         break;
     case 1:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource2, dataChannel << 0);
-        //dev->SetWireInValue(WireInDacSource2, dataChannel << 0, 0x001f);
+        addr = DAC_SEL_2;
         break;
     case 2:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource3, dataChannel << 0);
-        //dev->SetWireInValue(WireInDacSource3, dataChannel << 0, 0x001f);
+        addr = DAC_SEL_3;
         break;
     case 3:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource4, dataChannel << 0);
-        //dev->SetWireInValue(WireInDacSource4, dataChannel << 0, 0x001f);
+        addr = DAC_SEL_4;
         break;
     case 4:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource5, dataChannel << 0);
-        //dev->SetWireInValue(WireInDacSource5, dataChannel << 0, 0x001f);
+        addr = DAC_SEL_5;
         break;
     case 5:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource6, dataChannel << 0);
-        //dev->SetWireInValue(WireInDacSource6, dataChannel << 0, 0x001f);
+        addr = DAC_SEL_6;
         break;
     case 6:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource7, dataChannel << 0);
-        //dev->SetWireInValue(WireInDacSource7, dataChannel << 0, 0x001f);
+        addr = DAC_SEL_7;
         break;
     case 7:
-        oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDacSource8, dataChannel << 0);
-        //dev->SetWireInValue(WireInDacSource8, dataChannel << 0, 0x001f);
+        addr = DAC_SEL_8;
         break;
     }
+
+    oni_reg_val_t register_value;
+
+    oni_read_reg(ctx, DEVICE_RHYTHM, addr, &register_value);
+
+    oni_reg_val_t enabled = register_value >> 10;
+    oni_reg_val_t stream = register_value & 0b1111100000;
+    oni_reg_val_t new_value = (enabled << 10) + stream + dataChannel;
+
+    oni_write_reg(ctx, DEVICE_RHYTHM, addr, new_value);
 
 }
 
@@ -899,22 +752,16 @@ void OniDevice::selectAuxCommandLength(AuxCmdSlot auxCommandSlot, int loopIndex,
 
     switch (auxCommandSlot) {
     case AuxCmd1:
-        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdLoop1, loopIndex);
-        //dev->SetWireInValue(WireInAuxCmdLoop_R_USB3, loopIndex, 0x000003ff);
-        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdLength1, endIndex);
-        //dev->SetWireInValue(WireInAuxCmdLength_R_USB3, endIndex, 0x000003ff);
+        oni_write_reg(ctx, DEVICE_RHYTHM, LOOP_AUXCMD_INDEX_1, loopIndex);
+        oni_write_reg(ctx, DEVICE_RHYTHM, MAX_AUXCMD_INDEX_1, endIndex);
         break;
     case AuxCmd2:
-        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdLoop2, loopIndex << 10);
-        //dev->SetWireInValue(WireInAuxCmdLoop_R_USB3, loopIndex << 10, 0x000003ff << 10);
-        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdLength2, endIndex << 10);
-        //dev->SetWireInValue(WireInAuxCmdLength_R_USB3, endIndex << 10, 0x000003ff << 10);
+        oni_write_reg(ctx, DEVICE_RHYTHM, LOOP_AUXCMD_INDEX_2, loopIndex);
+        oni_write_reg(ctx, DEVICE_RHYTHM, MAX_AUXCMD_INDEX_2, endIndex);
         break;
     case AuxCmd3:
-        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdLoop3, loopIndex << 20);
-        //dev->SetWireInValue(WireInAuxCmdLoop_R_USB3, loopIndex << 20, 0x000003ff << 20);
-        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdLength3, endIndex << 20);
-        //dev->SetWireInValue(WireInAuxCmdLength_R_USB3, endIndex << 20, 0x000003ff << 20);
+        oni_write_reg(ctx, DEVICE_RHYTHM, LOOP_AUXCMD_INDEX_3, loopIndex);
+        oni_write_reg(ctx, DEVICE_RHYTHM, MAX_AUXCMD_INDEX_3, endIndex);
         break;
     case AuxCmd4:
         // Should not be reached, as AuxCmd4 is Stim-only.
@@ -952,32 +799,17 @@ void OniDevice::selectAuxCommandBank(BoardPort port, AuxCmdSlot auxCommandSlot, 
     case PortD:
         bitShift = 12;
         break;
-    case PortE:
-        bitShift = 16;
-        break;
-    case PortF:
-        bitShift = 20;
-        break;
-    case PortG:
-        bitShift = 24;
-        break;
-    case PortH:
-        bitShift = 28;
-        break;
     }
 
     switch (auxCommandSlot) {
     case AuxCmd1:
-        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdBank1, bank << bitShift);
-        //dev->SetWireInValue(WireInAuxCmdBank1_R, bank << bitShift, 0x0000000f << bitShift);
+        oni_write_reg(ctx, DEVICE_RHYTHM, AUXCMD_BANK_1, bank << bitShift);
         break;
     case AuxCmd2:
-        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdBank2, bank << bitShift);
-        //dev->SetWireInValue(WireInAuxCmdBank2_R, bank << bitShift, 0x0000000f << bitShift);
+        oni_write_reg(ctx, DEVICE_RHYTHM, AUXCMD_BANK_2, bank << bitShift);
         break;
     case AuxCmd3:
-        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInAuxCmdBank3, bank << bitShift);
-        //dev->SetWireInValue(WireInAuxCmdBank3_R, bank << bitShift, 0x0000000f << bitShift);
+        oni_write_reg(ctx, DEVICE_RHYTHM, AUXCMD_BANK_3, bank << bitShift);
         break;
     case AuxCmd4:
         // Should not be reached, as AuxCmd4 is Stim-only.
@@ -1013,6 +845,8 @@ void OniDevice::clearTtlOut()
 void OniDevice::uploadCommandList(const std::vector<unsigned int>& commandList, AuxCmdSlot auxCommandSlot, int bank)
 {
 
+    // CHECK
+
     if (auxCommandSlot != AuxCmd1 && auxCommandSlot != AuxCmd2 && auxCommandSlot != AuxCmd3) {
         std::cerr << "Error in OniDevice::uploadCommandList: auxCommandSlot out of range.\n";
         return;
@@ -1023,30 +857,32 @@ void OniDevice::uploadCommandList(const std::vector<unsigned int>& commandList, 
         return;
     }
 
+    oni_reg_addr_t base_address = 0x4000;
+
     for (unsigned int i = 0; i < commandList.size(); ++i) 
     {
-        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInCmdRamData, commandList[i]);
-        //dev->SetWireInValue(WireInCmdRamData_R, commandList[i]);
-
-        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInCmdRamAddr, i);
-        //dev->SetWireInValue(WireInCmdRamAddr_R, i);
-
-        oni_write_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireInCmdRamBank, bank);
+        
+        oni_reg_addr_t bank_select = (bank << 10);
  
+        oni_reg_addr_t aux_select;
+
         switch (auxCommandSlot) {
         case AuxCmd1:
-            //dev->ActivateTriggerIn(TrigInConfig_USB3, 1);
+            aux_select = (1 << 14);
             break;
         case AuxCmd2:
-            //dev->ActivateTriggerIn(TrigInConfig_USB3, 2);
+            aux_select = (2 << 14);
             break;
         case AuxCmd3:
-           // dev->ActivateTriggerIn(TrigInConfig_USB3, 3);
+            aux_select = (3 << 14);
             break;
         case AuxCmd4:
             // Should not be reached, as AuxCmd4 is Stim-only.
             break;
         }
+
+        oni_write_reg(ctx, DEVICE_RHYTHM, base_address + bank_select + aux_select + i, commandList[i]);
+
     }
   
 }
@@ -1354,10 +1190,12 @@ int OniDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vector<i
 unsigned int OniDevice::numWordsInFifo()
 {
 
+    // how to get this info?
+
     oni_reg_val_t numWordsLsb, numWordsMsb;
 
-    oni_read_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireOutNumWordsLsb, &numWordsLsb);
-    oni_read_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireOutNumWordsMsb, &numWordsMsb);
+    //oni_read_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireOutNumWordsLsb, &numWordsLsb);
+    //oni_read_reg(ctx, DEVICE_RHYTHM, OkEndPoint::WireOutNumWordsMsb, &numWordsMsb);
 
     lastNumWordsInFifo = (numWordsMsb << 16) + numWordsLsb;
     numWordsHasBeenUpdated = true;
@@ -1369,26 +1207,24 @@ unsigned int OniDevice::numWordsInFifo()
 bool OniDevice::isDcmProgDone() const
 {
 
-    oni_reg_val_t value;
-    oni_read_reg(ctx, DEVICE_RHYTHM, EndPoint::WireOutDataClkLocked, &value);
+    // DCM programming not supported
 
-    return ((value & 0x0002) > 1);
+    return true;
 }
 
 
 bool OniDevice::isDataClockLocked() const
 {
-    oni_reg_val_t value;
-    oni_read_reg(ctx, DEVICE_RHYTHM, EndPoint::WireOutDataClkLocked, &value);
+    // data clock cannot be locked?
 
-    return ((value & 0x0001) > 0);
+    return false;
 }
 
 
 void OniDevice::forceAllDataStreamsOff()
 {
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EndPoint::WireInDataStreamEn, 0x00000000);
+    oni_write_reg(ctx, DEVICE_RHYTHM, ENABLE, 0);
 
 }
 

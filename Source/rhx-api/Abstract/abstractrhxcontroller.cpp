@@ -149,30 +149,12 @@ void AbstractRHXController::initialize()
         clearTtlOut();
     }
 
-    enableDac(0, false);
-    enableDac(1, false);
-    enableDac(2, false);
-    enableDac(3, false);
-    enableDac(4, false);
-    enableDac(5, false);
-    enableDac(6, false);
-    enableDac(7, false);
-    selectDacDataStream(0, 0);
-    selectDacDataStream(1, 0);
-    selectDacDataStream(2, 0);
-    selectDacDataStream(3, 0);
-    selectDacDataStream(4, 0);
-    selectDacDataStream(5, 0);
-    selectDacDataStream(6, 0);
-    selectDacDataStream(7, 0);
-    selectDacDataChannel(0, 0);
-    selectDacDataChannel(1, 0);
-    selectDacDataChannel(2, 0);
-    selectDacDataChannel(3, 0);
-    selectDacDataChannel(4, 0);
-    selectDacDataChannel(5, 0);
-    selectDacDataChannel(6, 0);
-    selectDacDataChannel(7, 0);
+    for (int i = 0; i < 8; i++)
+    {
+        enableDac(i, false);
+        selectDacDataStream(i, 0);
+        selectDacDataChannel(i, 0);
+    }
 
     setDacManual(32768);    // midrange value = 0 V
 
@@ -185,14 +167,8 @@ void AbstractRHXController::initialize()
         setExternalFastSettleChannel(0);
     }
 
-    setDacThreshold(0, 32768, true);
-    setDacThreshold(1, 32768, true);
-    setDacThreshold(2, 32768, true);
-    setDacThreshold(3, 32768, true);
-    setDacThreshold(4, 32768, true);
-    setDacThreshold(5, 32768, true);
-    setDacThreshold(6, 32768, true);
-    setDacThreshold(7, 32768, true);
+    for (int i = 0; i < 8; i++)
+        setDacThreshold(i, 32768, true);
 
     if (type == ControllerStimRecordUSB2 || type == ControllerRecordUSB3) {
         enableDacReref(false);
@@ -219,7 +195,8 @@ void AbstractRHXController::initialize()
         setExternalDigOutChannel(PortH, 0);
     }
 
-    if (type == ControllerStimRecordUSB2) {
+    if (type == ControllerStimRecordUSB2) 
+    {
         setAnalogInTriggerThreshold(1.65); // +1.65 V
 
         const int NEVER = 65535;

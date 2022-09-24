@@ -330,6 +330,14 @@ private:
 
     /** Force all data streams off, used in FPGA initialization. */
     void forceAllDataStreamsOff() override;
+
+    enum Rhythm_Mode
+    {
+        SPI_RUN_CONTINUOUS = 1,
+        DSP_SETTLE = 2,
+        TTL_OUT_MODE = 3,
+        LED_ENABLE = 4
+    };
     
     enum Rhythm_Registers
     {
@@ -346,8 +354,8 @@ private:
         LOOP_AUXCMD_INDEX_1,
         LOOP_AUXCMD_INDEX_2,
         LOOP_AUXCMD_INDEX_3,
-        DATA_STREAM_1, // - 8_SEL,
-        DATA_STREAM_9, // - 16_SEL,
+        DATA_STREAM_1_8_SEL,
+        DATA_STREAM_9_16_SEL,
         DATA_STREAM_EN,
         EXTERNAL_FAST_SETTLE,
         EXTERNAL_DIGOUT_A,
@@ -374,90 +382,6 @@ private:
         DAC_THRESH_8,
         HPF
     };
-
-    // USB interface endpoint addresses common to all controller types
-    enum EndPoint {
-        WireInResetRun = 0x00,
-        WireInDataFreqPll = 0x03,
-        WireInMisoDelay = 0x04,
-        WireInDataStreamEn = 0x14,
-        WireInDacSource1 = 0x16,
-        WireInDacSource2 = 0x17,
-        WireInDacSource3 = 0x18,
-        WireInDacSource4 = 0x19,
-        WireInDacSource5 = 0x1a,
-        WireInDacSource6 = 0x1b,
-        WireInDacSource7 = 0x1c,
-        WireInDacSource8 = 0x1d,
-        WireInDacManual = 0x1e,
-        WireInMultiUse = 0x1f,
-
-        TrigInSpiStart = 0x41,
-
-        WireOutSpiRunning = 0x22,
-        WireOutTtlIn = 0x23,
-        WireOutDataClkLocked = 0x24,
-        WireOutBoardMode = 0x25,
-        WireOutBoardId = 0x3e,
-        WireOutBoardVersion = 0x3f,
-
-        PipeOutData = 0xa0
-    };
-
-    // USB interface endpoint addresses common to USB3 controller types
-    enum EndPointUSB3 {
-        WireInMaxTimeStep_USB3 = 0x01,
-
-        TrigInConfig_USB3 = 0x40,
-        TrigInDacConfig_USB3 = 0x42,
-
-        WireOutNumWords_USB3 = 0x20
-    };
-
-    // USB interface endpoint addresses unique to ControllerRecordUSB3 type
-    enum EndPointRecordUSB3 {
-        WireInSerialDigitalInCntl_R_USB3 = 0x02,
-        WireInAuxCmdLength_R_USB3 = 0x0b,
-        WireInAuxCmdLoop_R_USB3 = 0x0c,
-        WireInLedDisplay_R_USB3 = 0x0d,
-        WireInDacReref_R_USB3 = 0x0e,
-
-        WireOutSerialDigitalIn_R_USB3 = 0x21
-    };
-
-    enum OkEndPoint {
-        WireInMaxTimeStepLsb = 0x01,
-        WireInMaxTimeStepMsb = 0x02,
-
-        WireInCmdRamAddr = 0x05,
-        WireInCmdRamBank = 0x06,
-        WireInCmdRamData = 0x07,
-        WireInAuxCmdBank1 = 0x08,
-        WireInAuxCmdBank2 = 0x09,
-        WireInAuxCmdBank3 = 0x0a,
-        WireInAuxCmdLength1 = 0x0b,
-        WireInAuxCmdLength2 = 0x0c,
-        WireInAuxCmdLength3 = 0x0d,
-        WireInAuxCmdLoop1 = 0x0e,
-        WireInAuxCmdLoop2 = 0x0f,
-        WireInAuxCmdLoop3 = 0x10,
-        WireInLedDisplay = 0x11,
-        WireInDataStreamSel1234 = 0x12,
-        WireInDataStreamSel5678 = 0x13,
-        WireInTtlOut = 0x15,
-
-        TrigInDcmProg = 0x40,
-        TrigInRamWrite = 0x42,
-        TrigInDacThresh = 0x43,
-        TrigInDacHpf = 0x44,
-        TrigInExtFastSettle = 0x45,
-        TrigInExtDigOut = 0x46,
-        TrigInOpenEphys = 0x5a,
-
-        WireOutNumWordsLsb = 0x20,
-        WireOutNumWordsMsb = 0x21,
-
-    };
     
     /** ONI device indices*/
     const oni_dev_idx_t DEVICE_RHYTHM = 0x0101;
@@ -466,6 +390,13 @@ private:
    
     /** The ONI context object */
     oni_ctx ctx;
+
+    /** Helper method for setting the state of one bit*/
+    void oni_write_reg_bit(const oni_ctx ctx,
+        oni_dev_idx_t dev_idx,
+        oni_reg_addr_t addr,
+        int bit_index,
+        bool state);
 
 };
 

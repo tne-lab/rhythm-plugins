@@ -360,7 +360,7 @@ int RHXDataBlock::getChipID(int stream, int auxCmdSlot, int &register59Value) co
 {
     bool intanChipPresent;
 
-    if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
+    if (type != ControllerStimRecordUSB2) {
         // First, check ROM registers 32-36 to verify that they hold 'INTAN', and
         // the initial chip name ROM registers 24-26 that hold 'RHD'.
         // This is just used to verify that we are getting good data over the SPI
@@ -374,6 +374,9 @@ int RHXDataBlock::getChipID(int stream, int auxCmdSlot, int &register59Value) co
                             (char) auxiliaryData(stream, auxCmdSlot, 25) == 'H' &&
                             (char) auxiliaryData(stream, auxCmdSlot, 26) == 'D');
 
+        for (int i = 32; i < 37; i++)
+            std::cout << auxiliaryData(stream, auxCmdSlot, i) << std::endl;
+
         // If the SPI communication is bad, return -1.  Otherwise, return the Intan
         // chip ID number stored in ROM regstier 63.
         if (!intanChipPresent) {
@@ -383,7 +386,7 @@ int RHXDataBlock::getChipID(int stream, int auxCmdSlot, int &register59Value) co
             register59Value = auxiliaryData(stream, auxCmdSlot, 23); // Register 59
             return auxiliaryData(stream, auxCmdSlot, 19); // chip ID (Register 63)
         }
-    } else if (type == ControllerStimRecordUSB2) {
+    } else {
         register59Value = -1; // Only used for RHD2164 chips
         // First, check ROM registers 251-253 to verify that they hold 'INTAN'.
         // This is just used to verify that we are getting good data over the SPI
