@@ -617,24 +617,27 @@ SampleRateInterface::SampleRateInterface(DeviceThread* board_,
 
     name = "Sample Rate";
 
-    sampleRateOptions.add("1.00 kS/s");
-    sampleRateOptions.add("1.25 kS/s");
-    sampleRateOptions.add("1.50 kS/s");
-    sampleRateOptions.add("2.00 kS/s");
-    sampleRateOptions.add("2.50 kS/s");
-    sampleRateOptions.add("3.00 kS/s");
-    sampleRateOptions.add("3.33 kS/s");
-    sampleRateOptions.add("4.00 kS/s");
-    sampleRateOptions.add("5.00 kS/s");
-    sampleRateOptions.add("6.25 kS/s");
-    sampleRateOptions.add("8.00 kS/s");
-    sampleRateOptions.add("10.0 kS/s");
-    sampleRateOptions.add("12.5 kS/s");
-    sampleRateOptions.add("15.0 kS/s");
-    sampleRateOptions.add("20.0 kS/s");
-    sampleRateOptions.add("25.0 kS/s");
+    if (board->boardType != ONI_USB)
+    {
+        sampleRateOptions.add("1.00 kS/s");
+        sampleRateOptions.add("1.25 kS/s");
+        sampleRateOptions.add("1.50 kS/s");
+        sampleRateOptions.add("2.00 kS/s");
+        sampleRateOptions.add("2.50 kS/s");
+        sampleRateOptions.add("3.00 kS/s");
+        sampleRateOptions.add("3.33 kS/s");
+        sampleRateOptions.add("4.00 kS/s");
+        sampleRateOptions.add("5.00 kS/s");
+        sampleRateOptions.add("6.25 kS/s");
+        sampleRateOptions.add("8.00 kS/s");
+        sampleRateOptions.add("10.0 kS/s");
+        sampleRateOptions.add("12.5 kS/s");
+        sampleRateOptions.add("15.0 kS/s");
+        sampleRateOptions.add("20.0 kS/s");
+        sampleRateOptions.add("25.0 kS/s");
+    }
+    
     sampleRateOptions.add("30.0 kS/s");
-
 
     rateSelection = new ComboBox("Sample Rate");
     rateSelection->addItemList(sampleRateOptions, 1);
@@ -655,11 +658,14 @@ void SampleRateInterface::comboBoxChanged(ComboBox* cb)
     {
         if (cb == rateSelection)
         {
-            board->setSampleRate(cb->getSelectedId()-1);
+            if (board->boardType != ONI_USB)
+            {
+                board->setSampleRate(cb->getSelectedId() - 1);
 
-            LOGD("Setting sample rate to index ", cb->getSelectedId() - 1);
+                LOGD("Setting sample rate to index ", cb->getSelectedId() - 1);
 
-            CoreServices::updateSignalChain(editor);
+                CoreServices::updateSignalChain(editor);
+            }
         }
     }
 }
