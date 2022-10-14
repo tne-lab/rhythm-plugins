@@ -36,6 +36,12 @@
 #include <cmath>
 
 #include "rhxcontroller.h"
+#include "rhxregisters.h"
+
+//#define SetWireInValue(a, b) SetWireInValue(a, b); std::cout << "SetWireInValue address: " << (a) << " value: " << (b) << std::endl;
+//#define ActivateTriggerIn(a, b) ActivateTriggerIn(a, b); std::cout << "ActivateTriggerIn address: " << (a) << " value: " << (b) << std::endl;
+//#define GetWireOutValue(a) GetWireOutValue(a); std::cout << "GetWireOutValue address: " << (a) << std::endl;
+
 
 // This class provides access to and control of one of the following:
 //   (1) an Opal Kelly XEM6010 USB2/FPGA interface board running the Intan Rhythm interface Verilog code
@@ -48,6 +54,8 @@
 RHXController::RHXController(ControllerType type_, AmplifierSampleRate sampleRate_) :
     AbstractRHXController(type_, sampleRate_)
 {
+
+    std::cout << "RHXController::RHXController" << std::endl;
 }
 
 RHXController::~RHXController()
@@ -57,8 +65,23 @@ RHXController::~RHXController()
 
 // Find an Opal Kelly board attached to a USB port with the given serial number and open it returns 1 if successful,
 // -1 if FrontPanel cannot be loaded, and -2 if board can't be found.
-int RHXController::open(const std::string& boardSerialNumber)
+int RHXController::open(const std::string& boardSerialNumber, const char* libraryFilePath)
 {
+
+    if (!okFrontPanelDLL_LoadLib(libraryFilePath)) {
+        std::cerr << "FrontPanel DLL could not be loaded.  " <<
+            "Make sure this DLL is in the application start directory." << std::endl;
+    }
+
+    char dll_date[32], dll_time[32];
+    std::string serialNumber = "";
+
+    okFrontPanelDLL_GetVersion(dll_date, dll_time);
+
+    std::cout << std::endl << "FrontPanel DLL loaded.  Built: " << dll_date << "  " << dll_time << std::endl;
+
+    std::cout << "RHXController::open" << std::endl;
+
     dev = std::make_unique<okCFrontPanel>();
     std::cout << "Attempting to connect to device '" << boardSerialNumber.c_str() << "'\n";
 
@@ -75,6 +98,7 @@ int RHXController::open(const std::string& boardSerialNumber)
     dev->LoadDefaultPLLConfiguration();
 
     // Get some general information about the XEM.
+    std::cout << "FPGA system clock: " << getSystemClockFreq() << " MHz" << std::endl; // Should indicate 100 MHz
     std::cout << "Opal Kelly device firmware version: " << dev->GetDeviceMajorVersion() << "." <<
             dev->GetDeviceMinorVersion() << '\n';
     std::cout << "Opal Kelly device serial number: " << dev->GetSerialNumber() << '\n';
@@ -136,11 +160,24 @@ bool RHXController::uploadFPGABitfile(const std::string& filename)
     return true;
 }
 
+// Reads system clock frequency from Opal Kelly board (in MHz).  Should be 100 MHz for normal
+// Rhythm operation.
+double RHXController::getSystemClockFreq() const
+{
+    // Read back the CY22393 PLL configuation
+    okCPLL22393 pll;
+    dev->GetEepromPLL22393Configuration(pll);
+
+    return pll.GetOutputFrequency(0);
+}
+
 // Reset FPGA.  This clears all auxiliary command RAM banks, clears the USB FIFO, and resets the per-channel sampling
 // rate to 30.0 kS/s/ch.
 void RHXController::resetBoard()
 {
     std::lock_guard<std::mutex> lockOk(okMutex);
+
+    std::cout << " RHXController::resetBoard()" << std::endl;
 
     resetBoard(dev.get());
 
@@ -170,6 +207,9 @@ void RHXController::resetBoard()
 // Initiate SPI data acquisition.
 void RHXController::run()
 {
+
+    std::cout << " RHXController::run()" << std::endl;
+
     std::lock_guard<std::mutex> lockOk(okMutex);
 
     dev->UpdateWireOuts();
@@ -199,6 +239,9 @@ bool RHXController::isRunning()
 // Flush all remaining data out of the FIFO.  (This function should only be called when SPI data acquisition has been stopped.)
 void RHXController::flush()
 {
+
+    std::cout << " RHXController::flush()" << std::endl;
+
     std::lock_guard<std::mutex> lockOk(okMutex);
 
     if (type == ControllerRecordUSB3) {
@@ -210,7 +253,7 @@ void RHXController::flush()
         }
         while (numWordsInFifo() > 0) {
             dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize,
-                                      USB3BlockSize * std::max(BytesPerWord * numWordsInFifo() / USB3BlockSize, (unsigned int)1),
+                                      USB3BlockSize * max(BytesPerWord * numWordsInFifo() / USB3BlockSize, (unsigned int)1),
                                       usbBuffer);
         }
 
@@ -229,6 +272,9 @@ void RHXController::flush()
 // Low-level FPGA reset.  Call when closing application to make sure everything has stopped.
 void RHXController::resetFpga()
 {
+
+    std::cout << " RHXController::resetFpga()" << std::endl;
+
     std::lock_guard<std::mutex> lockOk(okMutex);
 
     dev->ResetFPGA();
@@ -239,10 +285,11 @@ bool RHXController::readDataBlock(RHXDataBlock *dataBlock)
 {
     std::lock_guard<std::mutex> lockOk(okMutex);
 
+    std::cout << " RHXController::readDataBlock()" << std::endl;
+
     unsigned int numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
-    std::cout << "Reading " << numBytesToRead << " from pipeout." << std::endl;
-    std::cout << "Data block size: " << RHXDataBlock::dataBlockSizeInWords(type, numDataStreams) << std::endl;
+    std::cout << "Reading " << numBytesToRead << " from pipeout " << PipeOutData << std::endl;
     std::cout << "Num data streams: " << numDataStreams << std::endl;
 
     if (numBytesToRead > usbBufferSize) {
@@ -253,7 +300,7 @@ bool RHXController::readDataBlock(RHXDataBlock *dataBlock)
 
     if (type == ControllerRecordUSB3 || type == ControllerOEOpalKellyUSB3 ) {
         long result = dev->ReadFromBlockPipeOut(PipeOutData, USB3BlockSize,
-                                                USB3BlockSize * std::max(numBytesToRead / USB3BlockSize, (unsigned int)1),
+                                                USB3BlockSize * max(numBytesToRead / USB3BlockSize, (unsigned int)1),
                                                 usbBuffer);
         if (result == ok_Failed) {
             std::cerr << "CRITICAL (readDataBlock): Failure on pipe read.  Check block and buffer sizes.\n";
@@ -266,6 +313,8 @@ bool RHXController::readDataBlock(RHXDataBlock *dataBlock)
 
     dataBlock->fillFromUsbBuffer(usbBuffer, 0);
 
+    dataBlock->print(0);
+
     return true;
 }
 
@@ -274,6 +323,8 @@ bool RHXController::readDataBlock(RHXDataBlock *dataBlock)
 bool RHXController::readDataBlocks(int numBlocks, std::deque<RHXDataBlock*> &dataQueue)
 {
     std::lock_guard<std::mutex> lockOk(okMutex);
+
+    std::cout << " RHXController::readDataBlocks()" << std::endl;
 
     unsigned int numWordsToRead = numBlocks * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
@@ -437,6 +488,9 @@ void RHXController::setDataSource(int stream, BoardDataSource dataSource)
     int bitShift = 0;
     EndPointRecordUSB2 endPoint;
 
+    std::cout << "RHXController::setDataSource(" << stream << ", " << dataSource << ")" << std::endl;
+
+
     if ((stream < 0) || (stream > 7)) {
         std::cerr << "Error in RHXController::setDataSource: stream out of range.\n";
         return;
@@ -514,6 +568,9 @@ void RHXController::setDacManual(int value)
 // Turn LEDs on or off (Open Ephys boards only)
 void RHXController::enableLeds(bool ledsOn)
 {
+
+    std::cout << " RHXController::enableLeds()" << std::endl;
+
     if (type == ControllerOEECP5 || type == ControllerOEOpalKellyUSB2 || type == ControllerOEOpalKellyUSB3)
     {
         std::lock_guard<std::mutex> lockOk(okMutex);
@@ -528,6 +585,8 @@ void RHXController::enableLeds(bool ledsOn)
 void RHXController::setClockDivider(int divide_factor)
 {
 
+    std::cout << " RHXController::setClockDivider()" << std::endl;
+
     if (type == ControllerOEECP5 || type == ControllerOEOpalKellyUSB2 || type == ControllerOEOpalKellyUSB3)
     {
         std::lock_guard<std::mutex> lockOk(okMutex);
@@ -540,6 +599,9 @@ void RHXController::setClockDivider(int divide_factor)
 // Set the eight red LEDs on the Opal Kelly XEM6x10 board according to integer array.
 void RHXController::setLedDisplay(const int* ledArray)
 {
+
+    std::cout << " RHXController::setLedDisplay()" << std::endl;
+
     std::lock_guard<std::mutex> lockOk(okMutex);
 
     int ledOut = 0;
@@ -575,6 +637,8 @@ void RHXController::setSpiLedDisplay(const int* ledArray)
         type == ControllerOEOpalKellyUSB3 ||
         type == ControllerOEECP5) return;
 
+    std::cout << " RHXController::setSpiLedDisplay()" << std::endl;
+
     std::lock_guard<std::mutex> lockOk(okMutex);
 
     int ledOut = 0;
@@ -596,6 +660,9 @@ void RHXController::setSpiLedDisplay(const int* ledArray)
 // Set the gain level of all eight DAC channels to 2^gain (gain = 0-7).
 void RHXController::setDacGain(int gain)
 {
+
+    std::cout << " RHXController::setDacGain()" << std::endl;
+
     std::lock_guard<std::mutex> lockOk(okMutex);
     if ((gain < 0) || (gain > 7)) {
         std::cerr << "Error in RHXController::setDacGain: gain setting out of range.\n";
@@ -612,6 +679,8 @@ void RHXController::setAudioNoiseSuppress(int noiseSuppress)
 {
     std::lock_guard<std::mutex> lockOk(okMutex);
 
+    std::cout << " RHXController::setAudioNoiseSuppress()" << std::endl;
+
     if ((noiseSuppress < 0) || (noiseSuppress > 127)) {
         std::cerr << "Error in RHXController::setAudioNoiseSuppress: noiseSuppress out of range.\n";
         return;
@@ -625,6 +694,9 @@ void RHXController::setAudioNoiseSuppress(int noiseSuppress)
 // triggering of fast settling is enabled.
 void RHXController::setExternalFastSettleChannel(int channel)
 {
+
+    std::cout << " RHXController::setExternalFastSettleChannel()" << std::endl;
+
     if (type == ControllerStimRecordUSB2) return;
     std::lock_guard<std::mutex> lockOk(okMutex);
 
@@ -646,6 +718,9 @@ void RHXController::setExternalFastSettleChannel(int channel)
 // a particular SPI port, if external control of auxout is enabled.
 void RHXController::setExternalDigOutChannel(BoardPort port, int channel)
 {
+
+    std::cout << " RHXController::setExternalDigOutChannel()" << std::endl;
+
     if (type == ControllerStimRecordUSB2) return;
     std::lock_guard<std::mutex> lockOk(okMutex);
 
@@ -714,6 +789,8 @@ void RHXController::setDacHighpassFilter(double cutoff)
 {
     std::lock_guard<std::mutex> lockOk(okMutex);
 
+    std::cout << " RHXController::setDacHighpassFilter()" << std::endl;
+
     // Note that the filter coefficient is a function of the amplifier sample rate, so this
     // function should be called after the sample rate is changed.
     double b = 1.0 - exp(-1.0 * TwoPi * cutoff / getSampleRate());
@@ -743,6 +820,8 @@ void RHXController::setDacHighpassFilter(double cutoff)
 void RHXController::setDacThreshold(int dacChannel, int threshold, bool trigPolarity)
 {
     std::lock_guard<std::mutex> lockOk(okMutex);
+
+    std::cout << " RHXController::setDacThreshold()" << std::endl;
 
     if ((dacChannel < 0) || (dacChannel > 7)) {
         std::cerr << "Error in RHXController::setDacThreshold: dacChannel out of range.\n";
@@ -777,6 +856,9 @@ void RHXController::setDacThreshold(int dacChannel, int threshold, bool trigPola
 // Top 8 TTL outputs are under manual control; Bottom 8 TTL outputs are outputs of DAC comparators
 void RHXController::setTtlMode(int mode)
 {
+
+    std::cout << " RHXController::setTtlMode()" << std::endl;
+
     if (type == ControllerStimRecordUSB2) return;
     std::lock_guard<std::mutex> lockOk(okMutex);
 
@@ -792,6 +874,9 @@ void RHXController::setTtlMode(int mode)
 // Select an amplifier channel from a particular data stream to be subtracted from all DAC signals.
 void RHXController::setDacRerefSource(int stream, int channel)
 {
+
+    std::cout << " RHXController::setDacRerefSource()" << std::endl;
+
     if (type == ControllerRecordUSB2) return;
     std::lock_guard<std::mutex> lockOk(okMutex);
 
@@ -816,6 +901,9 @@ void RHXController::setDacRerefSource(int stream, int channel)
 // Set the given extra states
 void RHXController::setExtraStates(unsigned int extraStates)
 {
+
+    std::cout << " RHXController::setExtraStates()" << std::endl;
+
     if (type != ControllerStimRecordUSB2) return;
     std::lock_guard<std::mutex> lockOk(okMutex);
 
@@ -826,6 +914,9 @@ void RHXController::setExtraStates(unsigned int extraStates)
 // Turn on or off automatic stimulation command mode in the FPGA.
 void RHXController::setStimCmdMode(bool enabled)
 {
+
+    std::cout << " RHXController::setStimCmdMode()" << std::endl;
+
     if (type != ControllerStimRecordUSB2) return;
     std::lock_guard<std::mutex> lockOk(okMutex);
 
@@ -931,6 +1022,8 @@ void RHXController::setChargeRecoveryMode(bool useSwitch)
 bool RHXController::setSampleRate(AmplifierSampleRate newSampleRate)
 {
     std::lock_guard<std::mutex> lockOk(okMutex);
+
+    std::cout << " RHXController::setSampleRate()" << std::endl;
 
     // Assuming a 100 MHz reference clock is provided to the FPGA, the programmable FPGA clock frequency
     // is given by:
@@ -1066,9 +1159,11 @@ bool RHXController::setSampleRate(AmplifierSampleRate newSampleRate)
     while (isDcmProgDone() == false) {}
 
     // Reprogram clock synthesizer.
+    std::cout << "Reprogram clock synthesizer" << " " << WireInDataFreqPll << " " << (256 * M + D) << std::endl;
     dev->SetWireInValue(WireInDataFreqPll, (256 * M + D));
     dev->UpdateWireIns();
-    if (type == ControllerRecordUSB3) {
+
+    if (type == ControllerRecordUSB3 || ControllerOEOpalKellyUSB3) {
         dev->ActivateTriggerIn(TrigInConfig_USB3, 0);
     } else {
         dev->ActivateTriggerIn(TrigInDcmProg_USB2, 0);
@@ -1080,10 +1175,137 @@ bool RHXController::setSampleRate(AmplifierSampleRate newSampleRate)
     return true;
 }
 
+void RHXController::updateRegisters()
+{
+    std::cout << "RHXController::updateRegisters()" << std::endl;
+
+    // Set up an RHD2000 register object using this sample rate to
+    // optimize MUX-related register settings.
+
+    RHXRegisters chipRegisters(getType(), getSampleRate(), StimStepSize500nA);
+
+    int commandSequenceLength;
+    std::vector<unsigned int> commandList;
+
+    commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, true, 60);
+    // Upload version with ADC calibration to AuxCmd3 RAM Bank 0.
+    uploadCommandList(commandList, AuxCmd3, 0);
+    selectAuxCommandLength(AuxCmd3, 0,
+        commandSequenceLength - 1);
+
+    commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, false, 60);
+    // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
+    uploadCommandList(commandList, AuxCmd3, 1);
+    selectAuxCommandLength(AuxCmd3, 0,
+        commandSequenceLength - 1);
+
+    if (false)
+    {
+        // Create a command list for the AuxCmd1 slot.  This command sequence will continuously
+        // update Register 3, which controls the auxiliary digital output pin on each RHD2000 chip.
+        // In concert with the v1.4 Rhythm FPGA code, this permits real-time control of the digital
+        // output pin on chips on each SPI port.
+        chipRegisters.setDigOutLow();   // Take auxiliary output out of HiZ mode.
+        commandSequenceLength = chipRegisters.createCommandListRHDUpdateDigOut(commandList, 10);
+
+        uploadCommandList(commandList, AuxCmd1, 0);
+
+        selectAuxCommandLength(AuxCmd1, 0, commandSequenceLength - 1);
+        selectAuxCommandBank(PortA, AuxCmd1, 0);
+        selectAuxCommandBank(PortB, AuxCmd1, 0);
+        selectAuxCommandBank(PortC, AuxCmd1, 0);
+        selectAuxCommandBank(PortD, AuxCmd1, 0);
+
+        if (getType() == ControllerRecordUSB3)
+        {
+            selectAuxCommandBank(PortE, AuxCmd1, 0);
+            selectAuxCommandBank(PortF, AuxCmd1, 0);
+            selectAuxCommandBank(PortG, AuxCmd1, 0);
+            selectAuxCommandBank(PortH, AuxCmd1, 0);
+
+        }
+
+        // Next, we'll create a command list for the AuxCmd2 slot.  This command sequence
+        // will sample the temperature sensor and other auxiliary ADC inputs.
+        /*commandSequenceLength = chipRegisters.createCommandListTempSensor(commandList);
+        uploadCommandList(commandList, AuxCmd2, 0);
+        selectAuxCommandLength(AuxCmd2, 0, commandSequenceLength - 1);
+        selectAuxCommandBank(PortA, AuxCmd2, 0);
+        selectAuxCommandBank(PortB, AuxCmd2, 0);
+        selectAuxCommandBank(PortC, AuxCmd2, 0);
+        selectAuxCommandBank(PortD, AuxCmd2, 0);
+
+        if (getType() == ControllerRecordUSB3)
+        {
+            selectAuxCommandBank(PortE, AuxCmd2, 0);
+            selectAuxCommandBank(PortF, AuxCmd2, 0);
+            selectAuxCommandBank(PortG, AuxCmd2, 0);
+            selectAuxCommandBank(PortH, AuxCmd2, 0);
+        }*/
+
+        // Before generating register configuration command sequences, set amplifier
+        // bandwidth paramters.
+        chipRegisters.setDspCutoffFreq(1.0);
+        chipRegisters.setLowerBandwidth(1.0);
+        chipRegisters.setUpperBandwidth(7500.0);
+        chipRegisters.enableDsp(true);
+
+        // enable/disable aux inputs:
+        chipRegisters.enableAux1(true);
+        chipRegisters.enableAux2(true);
+        chipRegisters.enableAux3(true);
+
+        chipRegisters.createCommandListRHDRegisterConfig(commandList, true, 60);
+        // Upload version with ADC calibration to AuxCmd3 RAM Bank 0.
+        uploadCommandList(commandList, AuxCmd3, 0);
+        selectAuxCommandLength(AuxCmd3, 0,
+            commandSequenceLength - 1);
+
+        commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, false, 60);
+        // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
+        uploadCommandList(commandList, AuxCmd3, 1);
+        selectAuxCommandLength(AuxCmd3, 0,
+            commandSequenceLength - 1);
+
+
+        chipRegisters.setFastSettle(true);
+
+        commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, false, 60);
+        // Upload version with fast settle enabled to AuxCmd3 RAM Bank 2.
+        uploadCommandList(commandList, AuxCmd3, 2);
+        selectAuxCommandLength(AuxCmd3, 0,
+            commandSequenceLength - 1);
+
+        chipRegisters.setFastSettle(false);
+        selectAuxCommandBank(PortA, AuxCmd3,
+            false ? 2 : 1);
+        selectAuxCommandBank(PortB, AuxCmd3,
+            false ? 2 : 1);
+        selectAuxCommandBank(PortC, AuxCmd3,
+            false ? 2 : 1);
+        selectAuxCommandBank(PortD, AuxCmd3,
+            false ? 2 : 1);
+
+        if (getType() == ControllerRecordUSB3)
+        {
+            selectAuxCommandBank(PortE, AuxCmd3,
+                false ? 2 : 1);
+            selectAuxCommandBank(PortF, AuxCmd3,
+                false ? 2 : 1);
+            selectAuxCommandBank(PortG, AuxCmd3,
+                false ? 2 : 1);
+            selectAuxCommandBank(PortH, AuxCmd3,
+                false ? 2 : 1);
+        }
+    }
+}
+
 // Enable or disable one of the 32 available USB data streams (0-31).
 void RHXController::enableDataStream(int stream, bool enabled)
 {
     std::lock_guard<std::mutex> lockOk(okMutex);
+
+    std::cout << "RHXController::enableDataStream(" << stream << ", " << enabled << ")" << std::endl;
 
     if (stream < 0 || stream > (maxNumDataStreams() - 1)) {
         std::cerr << "Error in RHXController::enableDataStream: stream out of range.\n";
@@ -1111,6 +1333,8 @@ void RHXController::enableDataStream(int stream, bool enabled)
 void RHXController::enableDac(int dacChannel, bool enabled)
 {
     std::lock_guard<std::mutex> lockOk(okMutex);
+
+    std::cout << "RHXController::enableDac(" << dacChannel << ", " << enabled << ")" << std::endl;
 
     if ((dacChannel < 0) || (dacChannel > 7)) {
         std::cerr << "Error in RHXController::enableDac: dacChannel out of range.\n";
@@ -1157,6 +1381,9 @@ void RHXController::enableExternalFastSettle(bool enable)
     if (type == ControllerStimRecordUSB2) return;
     std::lock_guard<std::mutex> lockOk(okMutex);
 
+    std::cout << "RHXController::enableExternalFastSettle(" << enable << ")" << std::endl;
+
+
     dev->SetWireInValue(WireInMultiUse, enable ? 1 : 0);
     dev->UpdateWireIns();
     if (type == ControllerRecordUSB3) {
@@ -1173,6 +1400,8 @@ void RHXController::enableExternalDigOut(BoardPort port, bool enable)
 {
     if (type == ControllerStimRecordUSB2) return;
     std::lock_guard<std::mutex> lockOk(okMutex);
+
+    std::cout << "RHXController::enableExternalDigOut(" << port << ", " << enable << ")" << std::endl;
 
     dev->SetWireInValue(WireInMultiUse, enable ? 1 : 0);
     dev->UpdateWireIns();
@@ -1403,6 +1632,9 @@ void RHXController::selectDacDataChannel(int dacChannel, int dataChannel)
 // command slot (AuxCmd1, AuxCmd2, or AuxCmd3).
 void RHXController::selectAuxCommandLength(AuxCmdSlot auxCommandSlot, int loopIndex, int endIndex)
 {
+
+    std::cout << "RHXController::selectAuxCommandLength " << auxCommandSlot  << " " << loopIndex << " " << endIndex << std::endl;
+
     std::lock_guard<std::mutex> lockOk(okMutex);
     int maxIndex = (type == ControllerStimRecordUSB2) ? 8192 : 1024;
 
@@ -1509,6 +1741,8 @@ void RHXController::selectAuxCommandBank(BoardPort port, AuxCmdSlot auxCommandSl
     if (type == ControllerStimRecordUSB2) return;
     std::lock_guard<std::mutex> lockOk(okMutex);
     int bitShift;
+
+    std::cout << "RHXController::selectAuxCommandBank " << port << " " << auxCommandSlot << " " << bank << std::endl;
 
     if (auxCommandSlot != AuxCmd1 && auxCommandSlot != AuxCmd2 && auxCommandSlot != AuxCmd3) {
         std::cerr << "Error in RHXController::selectAuxCommandBank: auxCommandSlot out of range.\n";
@@ -1735,6 +1969,42 @@ int RHXController::findConnectedChips(std::vector<ChipType> &chipType,
     int maxSPIPorts = maxNumSPIPorts();
     int maxMISOLines = 2 * maxSPIPorts;
 
+    setMaxTimeStep(256);
+    setContinuousRunMode(false);
+
+    // Select RAM Bank 0 for AuxCmd3 initially, so the ADC is calibrated.
+    selectAuxCommandBank(PortA, AuxCmd3, 0);
+    selectAuxCommandBank(PortB, AuxCmd3, 0);
+    selectAuxCommandBank(PortC, AuxCmd3, 0);
+    selectAuxCommandBank(PortD, AuxCmd3, 0);
+
+    if (getType() == ControllerRecordUSB3)
+    {
+        selectAuxCommandBank(PortE, AuxCmd3, 0);
+        selectAuxCommandBank(PortF, AuxCmd3, 0);
+        selectAuxCommandBank(PortG, AuxCmd3, 0);
+        selectAuxCommandBank(PortH, AuxCmd3, 0);
+    }
+
+    std::cout << "Num enabled streams: " << getNumEnabledDataStreams() << std::endl;
+
+    // Start SPI interface
+    run();
+
+    // Wait for the 60-sample run to complete
+    while (isRunning())
+    {
+        ;
+    }
+
+    RHXDataBlock dataBlock1(type, getNumEnabledDataStreams());
+
+    // Read the resulting single data block from the USB interface. We don't
+    // need to do anything with this, since it was only used for ADC calibration
+    readDataBlock(&dataBlock1);
+
+    dataBlock1.print(0);
+
     chipType.resize(maxNumStreams);
     fill(chipType.begin(), chipType.end(), NoChip);
     std::vector<ChipType> chipTypeOld(maxNumStreams, NoChip);
@@ -1782,15 +2052,15 @@ int RHXController::findConnectedChips(std::vector<ChipType> &chipType,
     }
 
     // Enable all non-DDR data streams.
+    std::cout << "Enable all non-DDR streams" << std::endl;
     for (int stream = 0; stream < maxNumStreams; stream++) {
-        std::cout << "Enabling stream " << stream << " " << "true" << std::endl;
         enableDataStream(stream, true);
     }
 
-    if (type == ControllerRecordUSB3 || type == ControllerOEOpalKellyUSB3 || type == ControllerOEECP5) 
+    std::cout << "Disable DDR streams" << std::endl;
+    if (type == ControllerRecordUSB3) 
     {
         for (int stream = 1; stream < maxNumStreams; stream += 2) {
-            std::cout << "Enabling stream " << stream << " " << "false" << std::endl;
             enableDataStream(stream, false);
         }
     }
@@ -1813,7 +2083,7 @@ int RHXController::findConnectedChips(std::vector<ChipType> &chipType,
     }
 
     // Run the SPI interface for multiple command sequences (i.e., NRepeats data blocks).
-    const int NRepeats = 4;
+    const int NRepeats = 1;
     RHXDataBlock dataBlock(type, getNumEnabledDataStreams());
     setMaxTimeStep(NRepeats * dataBlock.samplesPerDataBlock());
     setContinuousRunMode(false);
@@ -1827,10 +2097,15 @@ int RHXController::findConnectedChips(std::vector<ChipType> &chipType,
         }
     }
 
+    std::cout << "Checking for connected amplifier chips..." << std::endl;
+
     // Run SPI command sequence at all 16 possible FPGA MISO delay settings
     // to find optimum delay for each SPI interface cable.
-    for (int delay = 4; delay < 5; ++delay) 
+    for (int delay = 0; delay < 16; ++delay) 
     {
+
+        std::cout << "CHECKING DELAY " << delay << std::endl;
+
         setCableDelay(PortA, delay);
         setCableDelay(PortB, delay);
         setCableDelay(PortC, delay);
@@ -1848,7 +2123,7 @@ int RHXController::findConnectedChips(std::vector<ChipType> &chipType,
 
         // Wait for the run to complete.
         while (isRunning()) {
-            std::this_thread::sleep_for(std::chrono::microseconds(100));
+            ; // std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
 
         for (int i = 0; i < NRepeats; ++i) 
@@ -1860,26 +2135,22 @@ int RHXController::findConnectedChips(std::vector<ChipType> &chipType,
             // Record delay settings that yield good communication with the chip.
             int register59Value;
             
-            //for (int stream = 0; stream < maxMISOLines; stream++) 
-            //{
-
-            int stream = 0;
+            for (int stream = 0; stream < maxMISOLines; stream++) 
+            {
                 
                 int id = dataBlock.getChipID(stream, auxCmdSlot, register59Value);
-                std::cout << "Timestamp: " << dataBlock.timeStamp(10) << std::endl;
-
-                std::cout << "Stream: " << stream << " chipId: " << id << std::endl;
+                std::cout << "  CHECKING STREAM " << stream << std::endl;
                 
                 if (id == (int)RHD2132Chip || 
                     id == (int)RHD2216Chip || 
                     id == (int)RHS2116Chip ||
                     (id == (int)RHD2164Chip && register59Value == Register59MISOA)) 
                 {
-                    std::cout << "delay: " << delay << " stream: " << stream << " chip id: " << id << std::endl;
+                    std::cout << "FOUND delay: " << delay << " stream: " << stream << " chip id: " << id << std::endl;
                     goodDelays[stream][delay] = goodDelays[stream][delay] + 1;
                     chipTypeOld[stream] = (ChipType)id;
                 }
-           // }
+            }
         }
     }
 
@@ -1927,16 +2198,16 @@ int RHXController::findConnectedChips(std::vector<ChipType> &chipType,
         optimumDelay[stream] = bestDelay;
     }
 
-    setCableDelay(PortA, std::max(optimumDelay[0], optimumDelay[1]));
-    setCableDelay(PortB, std::max(optimumDelay[2], optimumDelay[3]));
-    setCableDelay(PortC, std::max(optimumDelay[4], optimumDelay[5]));
-    setCableDelay(PortD, std::max(optimumDelay[6], optimumDelay[7]));
+    setCableDelay(PortA, max(optimumDelay[0], optimumDelay[1]));
+    setCableDelay(PortB, max(optimumDelay[2], optimumDelay[3]));
+    setCableDelay(PortC, max(optimumDelay[4], optimumDelay[5]));
+    setCableDelay(PortD, max(optimumDelay[6], optimumDelay[7]));
     
     if (type == ControllerRecordUSB3) {
-        setCableDelay(PortE, std::max(optimumDelay[8], optimumDelay[9]));
-        setCableDelay(PortF, std::max(optimumDelay[10], optimumDelay[11]));
-        setCableDelay(PortG, std::max(optimumDelay[12], optimumDelay[13]));
-        setCableDelay(PortH, std::max(optimumDelay[14], optimumDelay[15]));
+        setCableDelay(PortE, max(optimumDelay[8], optimumDelay[9]));
+        setCableDelay(PortF, max(optimumDelay[10], optimumDelay[11]));
+        setCableDelay(PortG, max(optimumDelay[12], optimumDelay[13]));
+        setCableDelay(PortH, max(optimumDelay[14], optimumDelay[15]));
     }
 
     // Now that we know which chips are plugged into each SPI port, add up the total number of

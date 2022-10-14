@@ -44,7 +44,7 @@ OniDevice::~OniDevice()
         oni_destroy_ctx(ctx);
 }
 
-int OniDevice::open(const std::string& boardSerialNumber)
+int OniDevice::open(const std::string& boardSerialNumber, const char* libraryFilePath)
 {
    ctx = oni_create_ctx("ft600"); // "ft600" is the driver name for the usb 
    if (ctx == NULL) return -1;

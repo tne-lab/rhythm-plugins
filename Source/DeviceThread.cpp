@@ -34,6 +34,7 @@
 
 #include "rhx-api/Hardware/rhxglobals.h"
 #include "rhx-api/Hardware/rhxcontroller.h"
+#include "rhythm-api/RhythmDevice.h"
 #include "oni-api/OniDevice.h"
 
 
@@ -122,12 +123,6 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
     std::cout << "Found " << nDevices << " Opal Kelly device" << ((nDevices == 1) ? "" : "s") <<
         " connected:" << std::endl;
 
-    for (int i = 0; i < nDevices; ++i) {
-        std::cout << "  Device #" << i + 1 << ": Opal Kelly " <<
-            frontPanelLib->opalKellyModelName(frontPanelLib->GetDeviceListModel(i)).c_str() <<
-            " with serial number " << frontPanelLib->GetDeviceListSerial(i).c_str() << std::endl;
-    }
-
     std::cout << std::endl;
 
     for (int i = 0; i < nDevices; ++i)
@@ -153,9 +148,12 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
     if (boardType == ACQUISITION_BOARD)
     {
         if (usbVersion == USB3)
-            device = std::make_unique<RHXController>(ControllerType::ControllerOEOpalKellyUSB3, ampSampleRate);
-        else
-            device = std::make_unique<RHXController>(ControllerType::ControllerOEOpalKellyUSB2, ampSampleRate);
+        {
+            device = std::make_unique<RhythmDevice>(ControllerType::ControllerOEOpalKellyUSB3, ampSampleRate);
+        }
+        else {
+            device = std::make_unique<RhythmDevice>(ControllerType::ControllerOEOpalKellyUSB2, ampSampleRate);
+        }
     }
     else if (boardType == INTAN_RHD_USB)
         device = std::make_unique<RHXController>(ControllerType::ControllerRecordUSB2, ampSampleRate);
@@ -165,9 +163,11 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
         device = std::make_unique<RHXController>(ControllerType::ControllerStimRecordUSB2, ampSampleRate);
     else if (boardType == ONI_USB)
         device = std::make_unique<OniDevice>();
+
+    frontPanelLib.reset();
     
     // 1. attempt to open the device
-    int errorCode = device->open(serialNumber.c_str());
+    int errorCode = device->open(serialNumber.c_str(), libraryFilePath.getCharPointer());
     
     if (errorCode == -1)
     {
@@ -216,6 +216,8 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
                 "Please place one in the appropriate directory and re-add the plugin to the signal chain."
                 "Ok.");
         }
+
+        std::cout << "Uploading bitfile: " << bitfilename << std::endl;
 
         success = device->uploadFPGABitfile(bitfilename.toStdString());
 

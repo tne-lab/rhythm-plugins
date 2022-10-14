@@ -94,6 +94,8 @@ public:
         return (x4 << 24) + (x3 << 16) + (x2 << 8) + (x1 << 0);
     }
 
+    void print(int stream) const;
+
 private:
     ControllerType type;
     int numDataStreams;
@@ -123,6 +125,7 @@ private:
         unsigned int result = (x2 << 8) | (x1 << 0);
         return (int)result;
     }
+
 };
 
 #endif // RHXDATABLOCK_H

@@ -29,6 +29,7 @@
 //------------------------------------------------------------------------------
 
 #include "../Hardware/rhxregisters.h"
+#include "../Hardware/rhxdatablock.h"
 #include "abstractrhxcontroller.h"
 
 #include <iostream>
@@ -83,6 +84,43 @@ void AbstractRHXController::initialize()
 {
     resetBoard();
 
+    // Select per-channel amplifier sampling rate.
+    setSampleRate(AmplifierSampleRate::SampleRate30000Hz);
+
+    // Now that we have set our sampling rate, we can set the MISO sampling delay
+    // which is dependent on the sample rate.
+    setCableLengthMeters(PortA, 0.914f);
+    setCableLengthMeters(PortB, 0.914f);
+    setCableLengthMeters(PortC, 0.914f);
+    setCableLengthMeters(PortD, 0.914f);
+
+    updateRegisters();
+
+    enableDataStream(0, true);        // start with only one data stream enabled
+    enableDataStream(1, true);        // start with only one data stream enabled
+
+    // Since our longest command sequence is 60 commands, run the SPI interface for
+    // 60 samples (64 for usb3 power-of two needs)
+    setMaxTimeStep(256);
+    setContinuousRunMode(false);
+
+    // Start SPI interface
+    run();
+
+    // Wait for the 60-sample run to complete
+    while (isRunning())
+    {
+        ;
+    }
+
+    // Read the resulting single data block from the USB interface. We don't
+    // need to do anything with this, since it was only used for ADC calibration
+    std::unique_ptr<RHXDataBlock> dataBlock = std::make_unique<RHXDataBlock>(getType(), 2);
+
+    readDataBlock(dataBlock.get());
+
+    dataBlock->print(0);
+
     if (type == ControllerStimRecordUSB2) {
         enableAuxCommandsOnAllStreams();
         setGlobalSettlePolicy(false, false, false, false, false);
@@ -120,10 +158,11 @@ void AbstractRHXController::initialize()
         setCableLengthFeet(PortG, 3.0);
         setCableLengthFeet(PortH, 3.0);
     }
-
+    
     setDspSettle(false);
 
-    if (type == ControllerRecordUSB2 || type == ControllerOEOpalKellyUSB2) {
+    if (type == ControllerRecordUSB2 || type == ControllerOEOpalKellyUSB2 || type == ControllerOEOpalKellyUSB3)
+    {
         setDataSource(0, PortA1);
         setDataSource(1, PortB1);
         setDataSource(2, PortC1);
@@ -132,21 +171,41 @@ void AbstractRHXController::initialize()
         setDataSource(5, PortB2);
         setDataSource(6, PortC2);
         setDataSource(7, PortD2);
+
+        /*if (type == ControllerOEOpalKellyUSB3)
+        {
+            setDataSource(8, PortA1);
+            setDataSource(9, PortB1);
+            setDataSource(10, PortC1);
+            setDataSource(11, PortD1);
+            setDataSource(12, PortA2);
+            setDataSource(13, PortB2);
+            setDataSource(14, PortC2);
+            setDataSource(15, PortD2);
+        }*/
     }
 
     // Must first force all data streams off
+    std::cout << "Force streams off" << std::endl;
     forceAllDataStreamsOff();
 
+    std::cout << "Enable first stream" << std::endl;
     enableDataStream(0, true);        // Start with only one data stream enabled.
+
+    std::cout << "Disable other streams" << std::endl;
     for (int i = 1; i < maxNumDataStreams(); i++) {
         enableDataStream(i, false);
     }
+
+    std::cout << "DONE disabling" << std::endl;
 
     if (type == ControllerStimRecordUSB2) {
         enableDcAmpConvert(true);
         setExtraStates(0);
     } else {
+        std::cout << "Clearing TTL out" << std::endl;
         clearTtlOut();
+        std::cout << "DONE Clear TTL out" << std::endl;
     }
 
     for (int i = 0; i < 8; i++)
@@ -251,6 +310,8 @@ void AbstractRHXController::initialize()
         setAmpSettleMode(false); // set amp_settle_mode (false = amplifier low frequency cutoff select; true = amplifier fast settle)
         setChargeRecoveryMode(false); // set charge_recov_mode (false = current-limited charge recovery drivers; true = charge recovery switch)
     }
+
+    updateRegisters();
 }
 
 // Return the maximum number of data streams for a controller of the given type.

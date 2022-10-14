@@ -142,7 +142,7 @@ public:
     StreamChannelPair streamChannelFromWaveName(const std::string& waveName) const;
 
     virtual bool isSynthetic() const = 0;
-    virtual int open(const std::string& boardSerialNumber) = 0;
+    virtual int open(const std::string& boardSerialNumber, const char* libraryFilePath) = 0;
     virtual bool uploadFPGABitfile(const std::string& filename) = 0;
     virtual void resetBoard() = 0;
 
@@ -183,6 +183,7 @@ public:
     virtual void setAmpSettleMode(bool useFastSettle) = 0;
     virtual void setChargeRecoveryMode(bool useSwitch) = 0;
     virtual bool setSampleRate(AmplifierSampleRate newSampleRate) = 0;
+    virtual void updateRegisters() { }
 
     virtual void enableDataStream(int stream, bool enabled) = 0;
     virtual void enableDac(int dacChannel, bool enabled) = 0;

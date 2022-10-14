@@ -47,7 +47,7 @@ public:
     ~RHXController();
 
     bool isSynthetic() const override { return false; }
-    int open(const std::string& boardSerialNumber) override;
+    int open(const std::string& boardSerialNumber, const char* libraryFilePath) override;
     bool uploadFPGABitfile(const std::string& filename) override;
     void resetBoard() override;
 
@@ -88,6 +88,7 @@ public:
     void setAmpSettleMode(bool useFastSettle) override;
     void setChargeRecoveryMode(bool useSwitch) override;
     bool setSampleRate(AmplifierSampleRate newSampleRate) override;
+    void updateRegisters() override;
 
     void enableDataStream(int stream, bool enabled) override;
     void enableDac(int dacChannel, bool enabled) override;
@@ -288,6 +289,7 @@ private:
     bool isDcmProgDone() const override;
     bool isDataClockLocked() const override;
     void forceAllDataStreamsOff() override;
+    double getSystemClockFreq() const;
 
     // Physical board only
     static void pulseWireIn(okCFrontPanel* dev_, int wireIn, unsigned int value);

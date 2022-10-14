@@ -22,12 +22,15 @@
 */
 
 
-#ifndef OniDevice_hpp
-#define OniDevice_hpp
+#ifndef RhythmDevice_hpp
+#define RhythmDevice_hpp
 
 #include <stdio.h>
 
-#include "oni.h"
+#include "rhd2000evalboard.h"
+#include "rhd2000registers.h"
+#include "rhd2000datablock.h"
+#include "okFrontPanelDLL.h"
 
 #include "../rhx-api/Abstract/abstractrhxcontroller.h"
 
@@ -37,16 +40,16 @@
  
  */
 
-class OniDevice : public AbstractRHXController
+class RhythmDevice : public AbstractRHXController
 {
 
 public:
 
     /** Constructor */
-    OniDevice();
+    RhythmDevice(ControllerType type_, AmplifierSampleRate sampleRate_);
 
     /** Destructor */
-    ~OniDevice();
+    ~RhythmDevice();
 
     /** Returns true if device generates synthetic data */
     bool isSynthetic() const override { return false; }
@@ -60,6 +63,8 @@ public:
     /** Reset FPGA. This clears all auxiliary command RAM banks, clears the USB FIFO, 
         and resets the per-channel samplingrate to 30.0 kS/s/ch. */
     void resetBoard() override;
+
+    void updateRegisters() override;
 
     /** Initiate SPI data acquisition. */
     void run() override;
@@ -313,10 +318,10 @@ public:
 private:
 
     /** Disable copy operator (declaration only) */
-    OniDevice(const OniDevice&);
+    RhythmDevice(const RhythmDevice&);
 
     /** Dsiable assignment operator (declaration only) */
-    OniDevice& operator=(const OniDevice&);
+    RhythmDevice& operator=(const RhythmDevice&);
 
     /** Return the number of 16-bit words in the USB FIFO.  The user should never attempt to 
         read more data than the FIFO currently contains, as it is not protected against underflow.*/
@@ -331,73 +336,14 @@ private:
     /** Force all data streams off, used in FPGA initialization. */
     void forceAllDataStreamsOff() override;
 
-    enum Rhythm_Mode
-    {
-        SPI_RUN_CONTINUOUS = 1,
-        DSP_SETTLE = 2,
-        TTL_OUT_MODE = 3,
-        LED_ENABLE = 4
-    };
-    
-    enum Rhythm_Registers
-    {
-        ENABLE = 0,
-        MODE,
-        MAX_TIMESTEP,
-        CABLE_DELAY,
-        AUXCMD_BANK_1,
-        AUXCMD_BANK_2,
-        AUXCMD_BANK_3,
-        MAX_AUXCMD_INDEX_1,
-        MAX_AUXCMD_INDEX_2,
-        MAX_AUXCMD_INDEX_3,
-        LOOP_AUXCMD_INDEX_1,
-        LOOP_AUXCMD_INDEX_2,
-        LOOP_AUXCMD_INDEX_3,
-        DATA_STREAM_1_8_SEL,
-        DATA_STREAM_9_16_SEL,
-        DATA_STREAM_EN,
-        EXTERNAL_FAST_SETTLE,
-        EXTERNAL_DIGOUT_A,
-        EXTERNAL_DIGOUT_B,
-        EXTERNAL_DIGOUT_C,
-        EXTERNAL_DIGOUT_D,
-        SYNC_CLKOUT_DIVIDE,
-        DAC_CTL,
-        DAC_SEL_1,
-        DAC_SEL_2,
-        DAC_SEL_3,
-        DAC_SEL_4,
-        DAC_SEL_5,
-        DAC_SEL_6,
-        DAC_SEL_7,
-        DAC_SEL_8,
-        DAC_THRESH_1,
-        DAC_THRESH_2,
-        DAC_THRESH_3,
-        DAC_THRESH_4,
-        DAC_THRESH_5,
-        DAC_THRESH_6,
-        DAC_THRESH_7,
-        DAC_THRESH_8,
-        HPF
-    };
-    
-    /** ONI device indices*/
-    const oni_dev_idx_t DEVICE_RHYTHM = 0x0101;
-    const oni_dev_idx_t DEVICE_TTL = 0x0102;
-    const oni_dev_idx_t DEVICE_DAC = 0x0103;
-   
-    /** The ONI context object */
-    oni_ctx ctx;
+    /** Rhythm API classes*/
+    std::unique_ptr<Rhd2000EvalBoard> evalBoard;
+    Rhd2000Registers chipRegisters;
+    std::unique_ptr<Rhd2000DataBlock> dataBlock;
+    std::vector<Rhd2000EvalBoard::BoardDataSource> enabledStreams;
 
-    /** Helper method for setting the state of one bit*/
-    void oni_write_reg_bit(const oni_ctx ctx,
-        oni_dev_idx_t dev_idx,
-        oni_reg_addr_t addr,
-        int bit_index,
-        bool state);
+    int INIT_STEP;
 
 };
 
-#endif /* OniDevice_hpp */
+#endif /* RhythmDevice_hpp */

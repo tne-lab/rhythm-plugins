@@ -40,7 +40,7 @@ RHXRegisters::RHXRegisters(ControllerType type_, double sampleRate_, StimStepSiz
     sampleRate(sampleRate_),
     stimStep(stimStep_)
 {
-    if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
+    if (type != ControllerStimRecordUSB2) {
         ampPwr.resize(64);
         ampFastSettle.resize(1);
     } else {
@@ -62,7 +62,7 @@ RHXRegisters::RHXRegisters(ControllerType type_, double sampleRate_, StimStepSiz
     setSamplingParameters();
 
     // Set default values for all register settings.
-    if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
+    if (type != ControllerStimRecordUSB2) {
         setDefaultRHDSettings();
     } else {
         setDefaultRHSSettings();
@@ -1059,6 +1059,9 @@ double RHXRegisters::setLowerBandwidth(double lowerBandwidth, int select)
 // Return a MOSI command (CALIBRATE or CLEAR or COMPLIANCE MONITOR RESET).
 unsigned int RHXRegisters::createRHXCommand(RHXCommandType commandType)
 {
+
+    std::cout << "Creating command: " << commandType << std::endl;
+
     if (type == ControllerStimRecordUSB2) {
         switch (commandType) {
         case RHXCommandCalibrate:
@@ -1094,6 +1097,9 @@ unsigned int RHXRegisters::createRHXCommand(RHXCommandType commandType)
 // Return a MOSI command (CONVERT or READ).
 unsigned int RHXRegisters::createRHXCommand(RHXCommandType commandType, unsigned int arg1)
 {
+    std::cout << "Creating command: " << commandType << " " << arg1 << std::endl;
+
+
     if (type == ControllerStimRecordUSB2) {
         switch (commandType) {
         case RHXCommandConvert:
@@ -1149,6 +1155,9 @@ unsigned int RHXRegisters::createRHXCommand(RHXCommandType commandType, unsigned
 // Return a MOSI command (WRITE).
 unsigned int RHXRegisters::createRHXCommand(RHXCommandType commandType, unsigned int arg1, unsigned int arg2)
 {
+
+    std::cout << "Creating command: " << commandType << " " << arg1 << " " << arg2 << std::endl;
+
     if (type == ControllerStimRecordUSB2) {
         switch (commandType) {
         case RHXCommandRegWrite:
@@ -1158,7 +1167,7 @@ unsigned int RHXRegisters::createRHXCommand(RHXCommandType commandType, unsigned
                 return 0xffffffff;
             }
             if (arg2 > 65535) {
-                std::cerr << "Error in RHXRegisters::createRHXCommand: " <<
+                std::cerr << "Error in RHXRegisters::createRHXCommand: " << commandType << " " << arg1 <<  " " << arg2 << " "
                     "Register data out of range.\n";
                 return 0xffffffff;
             }
@@ -1188,8 +1197,8 @@ unsigned int RHXRegisters::createRHXCommand(RHXCommandType commandType, unsigned
                 return -1;
             }
             if ((arg2 < 0) || (arg2 > 255)) {
-                std::cerr << "Error in RHXRegisters::createRHXCommand: " <<
-                        "Register data out of range.\n";
+                std::cerr << "Error in RHXRegisters::createRHXCommand: " << commandType << " " << arg1 << " " << arg2 << " " <<
+                    "Register data out of range.\n";
                 return -1;
             }
             return 0x8000 + (arg1 << 8) + arg2; // 10rrrrrrdddddddd; if the command is 'Register Write',
@@ -1517,7 +1526,7 @@ double RHXRegisters::setChargeRecoveryTargetVoltage(double vTarget)
 int RHXRegisters::createCommandListRHDRegisterConfig(std::vector<unsigned int> &commandList, bool calibrate,
                                                      int numCommands)
 {
-    if (type != ControllerRecordUSB2 && type != ControllerRecordUSB3) return -1;
+    if (type == ControllerStimRecordUSB2) return -1;
     if (numCommands < 60) return -1;
 
     commandList.clear();    // If command list already exists, erase it and start a new one
@@ -1593,9 +1602,9 @@ int RHXRegisters::createCommandListRHDRegisterConfig(std::vector<unsigned int> &
     // End with a dummy command.
     commandList.push_back(createRHXCommand(RHXCommandRegRead, 63));
 
-    for (int i = 0; i < (numCommands - 60); ++i) {
-        commandList.push_back(createRHXCommand(RHXCommandRegRead, 63));
-    }
+    //for (int i = 0; i < (numCommands - 60); ++i) {
+    //    commandList.push_back(createRHXCommand(RHXCommandRegRead, 63));
+    //}
 
     return (int)commandList.size();
 }
@@ -1898,7 +1907,7 @@ int RHXRegisters::createCommandListZcheckDac(std::vector<unsigned int> &commandL
 // Return the length of the command list.  numCommands should be evenly divisible by four.
 int RHXRegisters::createCommandListRHDSampleAuxIns(std::vector<unsigned int> &commandList, int numCommands)
 {
-    if (type != ControllerRecordUSB2 && type != ControllerRecordUSB3) return -1;
+    if (type == ControllerStimRecordUSB2) return -1;
     if (numCommands < 4) return -1;
 
     commandList.clear();    // If command list already exists, erase it and start a new one.
@@ -1929,7 +1938,7 @@ int RHXRegisters::createCommandListRHDSampleAuxIns(std::vector<unsigned int> &co
 // Return the length of the command list.
 int RHXRegisters::createCommandListRHDUpdateDigOut(std::vector<unsigned int> &commandList, int numCommands)
 {
-    if (type != ControllerRecordUSB2 && type != ControllerRecordUSB3) return -1;
+    if (type == ControllerStimRecordUSB2) return -1;
     if (numCommands < 1) return -1;
 
     commandList.clear();    // If command list already exists, erase it and start a new one.
