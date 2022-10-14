@@ -428,9 +428,28 @@ void DeviceThread::scanPorts()
     device->findConnectedChips(chipType, portIndex, commandStream, numChannelsOnPort);
 
     // initialize headstage objects
+
+    for (auto headstage : headstages)
+    {
+        headstage->setNumStreams(0); // reset stream count
+    }
+
     for (int i = 0; i < chipType.size(); i++)
     {
         LOGC(int(chipType[i]), " ", portIndex[i], " ", commandStream[i]);
+
+        if (commandStream[i] > -1)
+        {
+            if (chipType[i] == CHIP_ID_RHD2164)
+            {
+                enableHeadstage(commandStream[i] / 2, true, 2, 32);
+            }
+            else if (chipType[i] != CHIP_ID_RHD2164_B) 
+            {
+                enableHeadstage(commandStream[i] / 2, true, 1, 32);
+            }
+        }
+        
     }
 }
 
@@ -855,6 +874,9 @@ bool DeviceThread::enableHeadstage(int hsNum, bool enabled, int nStr, int strCha
 
     if (enabled)
     {
+
+        std::cout << "Enabling headstage " << hsNum << " with " << nStr << " streams." << std::endl;
+
         headstages[hsNum]->setFirstChannel(getNumDataOutputs(ContinuousChannel::ELECTRODE));
         headstages[hsNum]->setNumStreams(nStr);
         headstages[hsNum]->setChannelsPerStream(strChans);
