@@ -146,8 +146,8 @@ void Rhd2000DataBlock::fillFromUsbBuffer(unsigned char usbBuffer[], int blockInd
     int samplesToRead = nSamples <= 0 ? samplesPerBlock : nSamples;
     int num = 0;
 
-    std::cout << "Num samples: " << samplesToRead << std::endl;
-    std::cout << "Num aux channels: " << 3 << std::endl;
+    //std::cout << "Num samples: " << samplesToRead << std::endl;
+    //std::cout << "Num aux channels: " << 3 << std::endl;
 
     index = blockIndex * 2 * calculateDataBlockSizeInWords(numDataStreams, usb3);
     for (t = 0; t < samplesToRead; ++t) 

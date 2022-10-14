@@ -771,7 +771,7 @@ void Rhd2000EvalBoard::setMaxTimeStep(unsigned int maxTimeStep)
 // Initiate SPI data acquisition.
 void Rhd2000EvalBoard::run()
 {
-    std::cout << " Rhd2000EvalBoard::run()" << std::endl;
+    //std::cout << " Rhd2000EvalBoard::run()" << std::endl;
 
     dev->UpdateWireOuts();
 //  std::std::cout << "Block size: " << dev->GetWireOutValue(0x26) << std::std::endl;
@@ -1444,7 +1444,7 @@ bool Rhd2000EvalBoard::isDataClockLocked() const
 void Rhd2000EvalBoard::flush()
 {
 
-    std::cout << " Rhd2000EvalBoard::flush()" << std::endl;
+    //std::cout << " Rhd2000EvalBoard::flush()" << std::endl;
 
 
     if (usb3)
@@ -1482,12 +1482,12 @@ bool Rhd2000EvalBoard::readDataBlock(RHXDataBlock *dataBlock)
     unsigned int numBytesToRead;
     long res;
 
-    std::cout << " Rhd2000EvalBoard::readDataBlock()" << std::endl;
+    //std::cout << " Rhd2000EvalBoard::readDataBlock()" << std::endl;
 
     numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
-    std::cout << "Reading " << numBytesToRead << " from pipeout " << PipeOutData << std::endl;
-    std::cout << "Num data streams: " << numDataStreams << std::endl;
+    //std::cout << "Reading " << numBytesToRead << " from pipeout " << PipeOutData << std::endl;
+    //std::cout << "Num data streams: " << numDataStreams << std::endl;
 
     if (numBytesToRead > USB_BUFFER_SIZE) {
         std::cerr << "Error in Rhd2000EvalBoard::readDataBlock: USB buffer size exceeded.  " <<
@@ -1558,7 +1558,7 @@ bool Rhd2000EvalBoard::readDataBlocks(int numBlocks, std::queue<Rhd2000DataBlock
     Rhd2000DataBlock *dataBlock;
     long res;
 
-    std::cout << " Rhd2000EvalBoard::readDataBlocks()" << std::endl;
+    //std::cout << " Rhd2000EvalBoard::readDataBlocks()" << std::endl;
 
     numWordsToRead = numBlocks * dataBlock->calculateDataBlockSizeInWords(numDataStreams, usb3);
 

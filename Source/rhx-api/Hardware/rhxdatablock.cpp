@@ -382,9 +382,9 @@ int RHXDataBlock::getChipID(int stream, int auxCmdSlot, int &register59Value) co
             return -1;
         } else {
             
-            std::cout << "DEVICE ID: " << std::endl;
-            for (int i = 32; i < 37; i++)
-                std::cout << auxiliaryData(stream, auxCmdSlot, i) << std::endl;
+            //std::cout << "DEVICE ID: " << std::endl;
+            //for (int i = 32; i < 37; i++)
+            //    std::cout << auxiliaryData(stream, auxCmdSlot, i) << std::endl;
 
             register59Value = auxiliaryData(stream, auxCmdSlot, 23); // Register 59
             return auxiliaryData(stream, auxCmdSlot, 19); // chip ID (Register 63)
@@ -571,8 +571,8 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
     int ampIndex = 0;
     int adcIndex = 0;
 
-    std::cout << "Num samples: " << samplesPerDataBlock() << std::endl;
-    std::cout << "Num aux channels: " << numAuxChannels() << std::endl;
+    //std::cout << "Num samples: " << samplesPerDataBlock() << std::endl;
+    //std::cout << "Num aux channels: " << numAuxChannels() << std::endl;
 
     for (int t = 0; t < samplesPerDataBlock(); ++t)
     {

@@ -96,7 +96,7 @@ void AbstractRHXController::initialize()
 
     updateRegisters();
 
-    enableDataStream(0, true);        // start with only one data stream enabled
+    /*enableDataStream(0, true);        // start with only one data stream enabled
     enableDataStream(1, true);        // start with only one data stream enabled
 
     // Since our longest command sequence is 60 commands, run the SPI interface for
@@ -119,7 +119,7 @@ void AbstractRHXController::initialize()
 
     readDataBlock(dataBlock.get());
 
-    dataBlock->print(0);
+    dataBlock->print(0);*/
 
     if (type == ControllerStimRecordUSB2) {
         enableAuxCommandsOnAllStreams();
