@@ -26,6 +26,7 @@
 #define RhythmDevice_hpp
 
 #include <stdio.h>
+#include <mutex>
 
 #include "rhd2000evalboard.h"
 #include "rhd2000registers.h"
@@ -347,6 +348,8 @@ private:
     std::vector<Rhd2000EvalBoard::BoardDataSource> enabledStreams;
 
     int INIT_STEP;
+
+    std::mutex okMutex;
 
 };
 

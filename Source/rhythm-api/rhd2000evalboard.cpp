@@ -1484,6 +1484,10 @@ bool Rhd2000EvalBoard::readDataBlock(RHXDataBlock *dataBlock)
 
     numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
+    std::cout << "numDataStreams: " << numDataStreams << std::endl;
+    std::cout << "BytesPerWord: " << BytesPerWord << std::endl;
+    std::cout << "numBytesToRead: " << numBytesToRead << std::endl;
+
     //std::cout << "Reading " << numBytesToRead << " from pipeout " << PipeOutData << std::endl;
     //std::cout << "Num data streams: " << numDataStreams << std::endl;
 
@@ -1516,39 +1520,46 @@ bool Rhd2000EvalBoard::readDataBlock(RHXDataBlock *dataBlock)
 
 long Rhd2000EvalBoard::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
 {
-    unsigned int numBytesToRead;
-    long res;
 
-    numBytesToRead = numBlocks * BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+    unsigned int numBytesToRead = numBlocks * BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
-    std::cout << "numBlocks: " << numBlocks << std::endl;
-    std::cout << "numDataStreams: " << numDataStreams << std::endl;
-    std::cout << "BytesPerWord: " << BytesPerWord << std::endl;
-    std::cout << "numBytesToRead: " << numBytesToRead << std::endl;
+    //std::cout << "numBlocks: " << numBlocks << std::endl;
+    //std::cout << "numDataStreams: " << numDataStreams << std::endl;
+   // std::cout << "BytesPerWord: " << BytesPerWord << std::endl;
+   // std::cout << "numBytesToRead: " << numBytesToRead << std::endl;
 
-    if (numBytesToRead > USB_BUFFER_SIZE) {
-        std::cerr << "Error in Rhd2000EvalBoard::readDataBlock: USB buffer size exceeded.  " <<
-            "Increase value of USB_BUFFER_SIZE." << std::endl;
-        return false;
-    }
+    //std::cout << "Requesting " << numBytesToRead << " bytes." << std::endl;
+
+    unsigned int bytesAvailable = numWordsInFifo() * BytesPerWord;
+
+    //std::cout << bytesAvailable << " available." << std::endl;
+
+    if (bytesAvailable < numBytesToRead) return 0;
+
+    long result;
 
     if (usb3)
     {
-        std::cout << "usb3 read : " << numBytesToRead << " in " << USB3_BLOCK_SIZE << " blocks" << std::endl;
-        res = dev->ReadFromBlockPipeOut(PipeOutData, USB3_BLOCK_SIZE, numBytesToRead, usbBuffer);
+        //std::cout << "usb3 read : " << numBytesToRead << " in " << USB3_BLOCK_SIZE << " blocks" << std::endl;
+        result = dev->ReadFromBlockPipeOut(PipeOutData, USB3_BLOCK_SIZE, numBytesToRead, buffer);
 
     }
     else
     {
         //std::std::cout << "usb2 read: " << numBytesToRead << std::std::endl;
-        res = dev->ReadFromPipeOut(PipeOutData, numBytesToRead, usbBuffer);
-    }
-    if (res == ok_Timeout)
-    {
-        std::cerr << "CRITICAL: Timeout on pipe read. Check block and buffer sizes." << std::endl;
+        result = dev->ReadFromPipeOut(PipeOutData, numBytesToRead, buffer);
     }
 
-    return true;
+    if (result == ok_Failed) {
+        std::cerr << "RHXController::readDataBlocksRaw: Failure on BT pipe read.  Check block and buffer sizes.\n";
+    }
+    else if (result == ok_Timeout) {
+        std::cerr << "RHXController::readDataBlocksRaw: Timeout on BT pipe read.  Check block and buffer sizes.\n";
+    }
+
+    //std::cout << "Read: " << result << std::endl;
+
+    return result;
 }
 
 
@@ -1559,7 +1570,9 @@ bool Rhd2000EvalBoard::readRawDataBlock(unsigned char** bufferPtr, int nSamples)
 
     numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
-    //std::cout << "Reading " << numBytesToRead << std::endl;
+    std::cout << "numDataStreams: " << numDataStreams << std::endl;
+    std::cout << "BytesPerWord: " << BytesPerWord << std::endl;
+    std::cout << "numBytesToRead: " << numBytesToRead << std::endl;
 
     if (numBytesToRead > USB_BUFFER_SIZE) {
         std::cerr << "Error in Rhd2000EvalBoard::readDataBlock: USB buffer size exceeded.  " <<

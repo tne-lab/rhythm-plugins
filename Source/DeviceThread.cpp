@@ -1023,7 +1023,7 @@ bool DeviceThread::startAcquisition()
     device->flush();
 
     LOGD("Starting usb thread with buffer of ", blockSize * 2, " bytes");
-    //usbThread->startAcquisition(blockSize * 2);
+    usbThread->startAcquisition(blockSize * 2);
 
     device->setContinuousRunMode(true);
     device->run();
@@ -1099,11 +1099,11 @@ bool DeviceThread::updateBuffer()
     if (usbVersion == USB3 || device->getNumWordsInFifo() >= blockSize)
     {
 
-        //if (usbThread->usbRead(bufferPtr) == 0)
-       //     return true;
-
-        bool return_code = device->readRawDataBlock(&bufferPtr);
-
+        if (usbThread->usbRead(bufferPtr) == 0)
+        {
+            return true;
+        }
+            
         int index = 0;
         int auxIndex, chanIndex;
         int numStreams = enabledStreams.size();

@@ -60,17 +60,19 @@ void USBThread::stopAcquisition()
 	}
 }
 
-long USBThread::usbRead(unsigned char*& buffer)
+long USBThread::usbRead(uint8_t*& buffer)
 {
 	const ScopedLock lock(m_lock);
 
 	if (m_readBuffer == m_curBuffer)
 		return 0;
+
 	buffer = m_buffers[m_readBuffer].getData();
 	long read = m_lastRead[m_readBuffer];
 	m_readBuffer = ++m_readBuffer % 2;
 	m_canRead = true;
 	notify();
+
 	return read;
 }
 
@@ -89,6 +91,7 @@ void USBThread::run()
 
 				if (threadShouldExit())
 					break;
+
 				read = m_board->readDataBlocksRaw(1, m_buffers[m_curBuffer].getData());
 
 			} while (read <= 0);

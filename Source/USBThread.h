@@ -55,7 +55,7 @@ namespace RhythmNode
 		void stopAcquisition();
 
 		/** Reads data into an unsigned char buffer */
-		long usbRead(unsigned char*&);
+		long usbRead(uint8_t* & buffer);
 	
 	private:
 		
