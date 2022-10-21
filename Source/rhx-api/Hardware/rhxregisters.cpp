@@ -1060,7 +1060,7 @@ double RHXRegisters::setLowerBandwidth(double lowerBandwidth, int select)
 unsigned int RHXRegisters::createRHXCommand(RHXCommandType commandType)
 {
 
-    std::cout << "Creating command: " << commandType << std::endl;
+    //std::cout << "Creating command: " << commandType << std::endl;
 
     if (type == ControllerStimRecordUSB2) {
         switch (commandType) {
@@ -1097,8 +1097,7 @@ unsigned int RHXRegisters::createRHXCommand(RHXCommandType commandType)
 // Return a MOSI command (CONVERT or READ).
 unsigned int RHXRegisters::createRHXCommand(RHXCommandType commandType, unsigned int arg1)
 {
-    std::cout << "Creating command: " << commandType << " " << arg1 << std::endl;
-
+    //std::cout << "Creating command: " << commandType << " " << arg1 << std::endl;
 
     if (type == ControllerStimRecordUSB2) {
         switch (commandType) {
@@ -1156,7 +1155,7 @@ unsigned int RHXRegisters::createRHXCommand(RHXCommandType commandType, unsigned
 unsigned int RHXRegisters::createRHXCommand(RHXCommandType commandType, unsigned int arg1, unsigned int arg2)
 {
 
-    std::cout << "Creating command: " << commandType << " " << arg1 << " " << arg2 << std::endl;
+    //std::cout << "Creating command: " << commandType << " " << arg1 << " " << arg2 << std::endl;
 
     if (type == ControllerStimRecordUSB2) {
         switch (commandType) {

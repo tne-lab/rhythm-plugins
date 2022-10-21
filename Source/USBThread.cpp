@@ -23,13 +23,21 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "USBThread.h"
 #include "rhx-api/Abstract/abstractrhxcontroller.h"
+#include "oni-api/OniDevice.h"
 
 using namespace RhythmNode;
 
 USBThread::USBThread(AbstractRHXController* b)
 	: m_board(b), Thread("USBThread")
 {
-
+	if (b->getType() == ControllerOEECP5)
+	{
+		m_oni_device = (OniDevice*) m_board;
+		useOniFrame = true;
+	}
+	else {
+		useOniFrame = false;
+	}
 }
 
 void USBThread::startAcquisition(int nBytes)
@@ -41,9 +49,11 @@ void USBThread::startAcquisition(int nBytes)
 		m_lastRead[i] = 0;
 		m_buffers[i].malloc(nBytes);
 	}
+	
 	m_curBuffer = 0;
 	m_readBuffer = 0;
 	m_canRead = true;
+
 	startThread();
 }
 
@@ -60,6 +70,7 @@ void USBThread::stopAcquisition()
 	}
 }
 
+
 long USBThread::usbRead(uint8_t*& buffer)
 {
 	const ScopedLock lock(m_lock);
@@ -67,10 +78,18 @@ long USBThread::usbRead(uint8_t*& buffer)
 	if (m_readBuffer == m_curBuffer)
 		return 0;
 
-	buffer = m_buffers[m_readBuffer].getData();
+	if (useOniFrame)
+		buffer = ((uint8_t*) oni_buffers[m_readBuffer]->data) + 8; // skip ONI timestamps
+	else
+		buffer = m_buffers[m_readBuffer].getData();
+
 	long read = m_lastRead[m_readBuffer];
 	m_readBuffer = ++m_readBuffer % 2;
 	m_canRead = true;
+
+	if (useOniFrame)
+		oni_destroy_frame(oni_buffers[m_readBuffer]);
+
 	notify();
 
 	return read;
@@ -92,7 +111,13 @@ void USBThread::run()
 				if (threadShouldExit())
 					break;
 
-				read = m_board->readDataBlocksRaw(1, m_buffers[m_curBuffer].getData());
+				if (!useOniFrame)
+					read = m_board->readDataBlocksRaw(1, m_buffers[m_curBuffer].getData());
+				else
+				{
+					read = m_oni_device->readFrame(&oni_buffers[m_curBuffer]);
+				}
+					
 
 			} while (read <= 0);
 			{

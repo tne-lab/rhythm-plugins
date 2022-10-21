@@ -111,8 +111,7 @@ public:
     /* Turn on or off DSP settle function in the FPGA. (Only executes when CONVERT commands are sent.) */
     void setDspSettle(bool enabled) override;
 
-    /** Assign a particular data source (e.g., PortA1, PortA2, PortB1,...) to one of the eight 
-        available USB data streams (0-7). Used only with ControllerRecordUSB2.*/
+    /** Assign a particular data source (e.g., PortA1, PortA2, PortB1,...) to one of the available USB data streams (0-7).*/
     void setDataSource(int stream, BoardDataSource dataSource) override;
 
     /** Set the 16 bits of the digital TTL output lines on the FPGA high or low according to integer array.*/

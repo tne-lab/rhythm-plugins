@@ -62,7 +62,7 @@ ImpedanceMeter::ImpedanceMeter(DeviceThread* board_) :
     const int maxNumBlocks = 120;
     int numStreams = 8;
 
-    //allocateDoubleArray3D(amplifierPreFilter, numStreams, 32, MAX_SAMPLES_PER_DATA_BLOCK * maxNumBlocks);
+    allocateDoubleArray3D(amplifierPreFilter, numStreams, 32, 300 * maxNumBlocks);
 }
 
 ImpedanceMeter::~ImpedanceMeter()

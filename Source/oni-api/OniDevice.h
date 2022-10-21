@@ -74,6 +74,9 @@ public:
     /** Low-level FPGA reset.  Call when closing application to make sure everything has stopped.*/
     void resetFpga() override;
 
+    /** Read one ONI data frame */
+    int readFrame(oni_frame_t** frame);
+
     /** Read data block from the USB interface, if one is available. Return true if data block was available.*/
     bool readDataBlock(RHXDataBlock* dataBlock) override;
 
@@ -82,8 +85,10 @@ public:
     bool readDataBlocks(int numBlocks, std::deque<RHXDataBlock*>& dataQueue) override;
 
     /** Read a certain number of USB data blocks, if the specified number is available, 
-        and write the raw bytes to a buffer. Return total number of bytes read.*/
-    long readDataBlocksRaw(int numBlocks, uint8_t* buffer) override;
+        and write the raw bytes to a buffer. Return total number of bytes read.
+        
+        NOT IMPLEMENTED -- use readFrame() instead */
+    long readDataBlocksRaw(int numBlocks, uint8_t* buffer) override { return 0;  }
 
     /** Set the FPGA to run continuously once started (if continuousMode == true) or 
         to run until maxTimeStep is reached (if continuousMode == false).*/
@@ -101,9 +106,8 @@ public:
     /* Turn on or off DSP settle function in the FPGA. (Only executes when CONVERT commands are sent.) */
     void setDspSettle(bool enabled) override;
 
-    /** Assign a particular data source (e.g., PortA1, PortA2, PortB1,...) to one of the eight 
-        available USB data streams (0-7). Used only with ControllerRecordUSB2.*/
-    void setDataSource(int stream, BoardDataSource dataSource) override { }
+    /** Assign a particular data source (e.g., PortA1, PortA2, PortB1,...) to one of the available USB data streams (0-7).*/
+    void setDataSource(int stream, BoardDataSource dataSource) override;
 
     /** Set the 16 bits of the digital TTL output lines on the FPGA high or low according to integer array.*/
     void setTtlOut(const int* ttlOutArray) override;
@@ -331,6 +335,9 @@ private:
     /** Force all data streams off, used in FPGA initialization. */
     void forceAllDataStreamsOff() override;
 
+    /** Print a command list to the console in readable form. */
+    void printCommandList(const std::vector<unsigned int>& commandList) const;
+
     enum Rhythm_Mode
     {
         SPI_RUN_CONTINUOUS = 1,
@@ -380,7 +387,8 @@ private:
         DAC_THRESH_6,
         DAC_THRESH_7,
         DAC_THRESH_8,
-        HPF
+        HPF,
+        SPI_RUNNING
     };
     
     /** ONI device indices*/
@@ -391,12 +399,22 @@ private:
     /** The ONI context object */
     oni_ctx ctx;
 
+    /** USB block size*/
+    const oni_size_t usbReadBlockSize = 24 * 1024;
+
     /** Helper method for setting the state of one bit*/
     void oni_write_reg_bit(const oni_ctx ctx,
         oni_dev_idx_t dev_idx,
         oni_reg_addr_t addr,
         int bit_index,
         bool state);
+
+    /** Helper method for writing to an address with a mask*/
+    int oni_write_reg_mask(const oni_ctx ctx,
+        oni_dev_idx_t dev_idx,
+        oni_reg_addr_t addr,
+        oni_reg_val_t value,
+        unsigned int mask);
 
 };
 

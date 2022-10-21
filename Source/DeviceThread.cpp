@@ -438,7 +438,7 @@ void DeviceThread::scanPorts()
 
     for (int i = 0; i < chipType.size(); i++)
     {
-        LOGC(int(chipType[i]), " ", portIndex[i], " ", commandStream[i]);
+        //LOGC(int(chipType[i]), " ", portIndex[i], " ", commandStream[i]);
 
         if (commandStream[i] > -1)
         {

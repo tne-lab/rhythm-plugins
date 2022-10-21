@@ -68,8 +68,9 @@ bool OniDevice::uploadFPGABitfile(const std::string& filename)
 void OniDevice::resetBoard()
 {
 
-    oni_reg_val_t reg = 1;
-    oni_set_opt(ctx, ONI_OPT_RESET, &reg, sizeof(oni_size_t));
+    uint32_t val = 1;
+    oni_set_opt(ctx, ONI_OPT_RESET, &val, sizeof(val));
+    oni_set_opt(ctx, ONI_OPT_BLOCKREADSIZE, &usbReadBlockSize, sizeof(usbReadBlockSize));
 }
 
 
@@ -82,12 +83,16 @@ void OniDevice::run()
 
 bool OniDevice::isRunning()
 {
-    return false;
+    oni_reg_val_t val = 0;
+    if (oni_read_reg(ctx, DEVICE_RHYTHM, SPI_RUNNING, &val) != ONI_ESUCCESS) return false;
+    return val;
 }
 
 void OniDevice::flush()
 {
-    // flush is not needed, as stopping acquisition flushes the board buffers automatically.
+    // flush is not needed, as stopping acquisition flushes the board buffers automatically
+    oni_size_t reg = 0;
+    oni_set_opt(ctx, ONI_OPT_RUNNING, &reg, sizeof(reg));
 }
 
 
@@ -96,23 +101,56 @@ void OniDevice::resetFpga()
 
 }
 
+int OniDevice::readFrame(oni_frame_t** frame)
+{
+    int res;
+    bool found = false;
+    do
+    {
+        res = oni_read_frame(ctx, frame);
+        if (res < ONI_ESUCCESS) return res;
+        if ((*frame)->dev_idx == DEVICE_RHYTHM)
+        {
+            found = true;
+        }
+        else
+        {
+            oni_destroy_frame(*frame);
+        }
+
+    } while (!found);
+    return res;
+}
+
 
 bool OniDevice::readDataBlock(RHXDataBlock* dataBlock)
 {
 
     oni_frame_t* frame;
+    size_t offset = 0;
+    size_t bufSize = RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
-    oni_read_frame(ctx, &frame);
+    unsigned char* usbBuffer = (unsigned char*)malloc(sizeof(uint16_t) * bufSize);
 
-    if (frame->dev_idx == DEVICE_RHYTHM)
+    if (usbBuffer == NULL)
     {
-        memcpy(usbBuffer, frame->data + 8, frame->data_sz - 8);
+        std::cerr << "Error allocating usb buffer in readDataBlock" << std::endl;
+        return false;
     }
 
+    if (readFrame(&frame) < ONI_ESUCCESS)
+    {
+        free(usbBuffer);
+        return false;
+    }
+
+    memcpy(usbBuffer + offset, frame->data + 8, frame->data_sz - 8);
+    offset += frame->data_sz - 8;
     oni_destroy_frame(frame);
 
     dataBlock->fillFromUsbBuffer(usbBuffer, 0);
 
+    free(usbBuffer);
     return true;
 }
 
@@ -120,56 +158,41 @@ bool OniDevice::readDataBlock(RHXDataBlock* dataBlock)
 bool OniDevice::readDataBlocks(int numBlocks, std::deque<RHXDataBlock*>& dataQueue)
 {
 
-    for (int i = 0; i < numBlocks; ++i) 
+    size_t bufSize = RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+
+    unsigned char* usbBuffer = (unsigned char*)malloc(sizeof(uint16_t) * bufSize);
+    if (usbBuffer == NULL)
     {
-        RHXDataBlock* dataBlock = new RHXDataBlock(type, numDataStreams);
-        readDataBlock(dataBlock);
+        std::cerr << "Error allocating usb buffer in readDataBlocks" << std::endl;
+        return false;
+    }
+
+    RHXDataBlock* dataBlock;
+    oni_frame_t* frame;
+    size_t offset = 0;;
+
+    if (readFrame(&frame) < ONI_ESUCCESS)
+    {
+        free(usbBuffer);
+        return false;
+    }
+    memcpy(usbBuffer + offset, frame->data + 8, frame->data_sz - 8);
+    offset += frame->data_sz - 8;
+    oni_destroy_frame(frame);
+
+    dataBlock = new RHXDataBlock(type, numDataStreams);
+
+    for (int i = 0; i < numBlocks; ++i) {
+        dataBlock->fillFromUsbBuffer(usbBuffer, i);
         dataQueue.push_back(dataBlock);
     }
+    delete dataBlock;
+    free(usbBuffer);
+    return true;
 
     return true;
 }
 
-
-long OniDevice::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
-{
-    
-    int nSamples; //ONI TODO: For ONI the unit is a sample. We need to know how many samples are required 
-
-    int samplesRead = 0;
-    size_t bufferIndex = 0;
-    
-    do {
-        oni_frame_t* frame;
-        /***
-        A note on how oni_read_frame works. The call does not actually transfer single frames. 
-        There is a ONI_OPT_BLOCKREADSIZE parameter that sets the actual transfer size.
-        The first time oni_read_frame is called, it triggers a transfer of said size into a 
-        buffer. Subsequent calls of oni_read_frame return a frame from said buffer in a
-        no-copy manner (i.e.: data is a pointer to the already existing buffer). 
-        If there is not enough data in the buffer for a new frame, a new transfer is triggered.
-        ***/
-        oni_read_frame(ctx, &frame);
-
-        if (frame->dev_idx == DEVICE_RHYTHM) 
-        {
-            // this is terribly inefficient and will probably a usb thread.
-            // A better option could be to refactor DeviceThread::updateBuffer so it can convert 
-            //   frame by frame without the extra copy required here
-            // This could be done by filling an array of frame pointers, maybe.
-
-            memcpy(buffer + bufferIndex, frame->data+8, frame->data_sz-8);
-            bufferIndex += frame->data_sz-8;
-        }
-
-        oni_destroy_frame(frame);
-
-    } while (samplesRead < nSamples);
-
-    long result = 100;
-
-    return result;
-}
 
 void OniDevice::oni_write_reg_bit(const oni_ctx ctx,
     oni_dev_idx_t dev_idx,
@@ -185,15 +208,30 @@ void OniDevice::oni_write_reg_bit(const oni_ctx ctx,
 
     oni_write_reg(ctx, dev_idx, addr, register_value);
 }
+
+int OniDevice::oni_write_reg_mask(const oni_ctx ctx,
+    oni_dev_idx_t dev_idx, 
+    oni_reg_addr_t addr, 
+    oni_reg_val_t value, 
+    unsigned int mask)
+{
+    int res;
+    oni_reg_val_t val;
+
+    res = oni_read_reg(ctx, dev_idx, addr, &val);
+    if (res != ONI_ESUCCESS) return res;
+
+    val = (val & ~mask) | (value & mask);
+    res = oni_write_reg(ctx, dev_idx, addr, val);
+    return res;
+}
+
  
 void OniDevice::setContinuousRunMode(bool continuousMode)
 {
 
-    oni_write_reg_bit(ctx,
-        DEVICE_RHYTHM, 
-        MODE, 
-        SPI_RUN_CONTINUOUS,
-        continuousMode);
+    oni_reg_val_t val = continuousMode ? 1 << SPI_RUN_CONTINUOUS : 0;
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, MODE, val, 1 << SPI_RUN_CONTINUOUS);
 
 }
 
@@ -205,13 +243,14 @@ void OniDevice::setMaxTimeStep(unsigned int maxTimeStep)
 
 void OniDevice::setCableDelay(BoardPort port, int delay)
 {
-    int bitShift = 0;
+    int bitShift;
 
-    if ((delay < 0) || (delay > 15)) {
-        std::cerr << "Warning in OniDevice::setCableDelay: delay out of range: " << delay << '\n';
-        if (delay < 0) delay = 0;
-        else if (delay > 15) delay = 15;
+    if (delay < 0 || delay > 15) {
+        std::cerr << "Warning in Rhd2000ONIBoard::setCableDelay: delay out of range: " << delay << std::endl;
     }
+
+    if (delay < 0) delay = 0;
+    if (delay > 15) delay = 15;
 
     switch (port) {
     case PortA:
@@ -230,41 +269,19 @@ void OniDevice::setCableDelay(BoardPort port, int delay)
         bitShift = 12;
         cableDelay[3] = delay;
         break;
-    case PortE:
-        bitShift = 16;
-        cableDelay[4] = delay;
-        break;
-    case PortF:
-        bitShift = 20;
-        cableDelay[5] = delay;
-        break;
-    case PortG:
-        bitShift = 24;
-        cableDelay[6] = delay;
-        break;
-    case PortH:
-        bitShift = 28;
-        cableDelay[7] = delay;
-        break;
     default:
-        std::cerr << "Error in OniDevice::setCableDelay: unknown port.\n";
+        std::cerr << "Error in Rhd2000ONIBoard::setCableDelay: unknown port." << std::endl;
     }
 
-    oni_reg_val_t value;
-    oni_read_reg(ctx, DEVICE_RHYTHM, CABLE_DELAY, &value); //read the current value
-    value =  (value & (~(0xf < bitShift))) | (delay << bitShift); //clear only the relevant bits and set them to the new delay
-    oni_write_reg(ctx, DEVICE_RHYTHM, CABLE_DELAY, value);
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, CABLE_DELAY, delay << bitShift, 0x000f << bitShift);
 }
 
 
 void OniDevice::setDspSettle(bool enabled)
 {
 
-    oni_write_reg_bit(ctx,
-        DEVICE_RHYTHM,
-        MODE,
-        DSP_SETTLE,
-        enabled);
+    oni_reg_val_t val = enabled ? 1 << DSP_SETTLE : 0;
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, MODE, val, 1 << DSP_SETTLE);
 
 }
 
@@ -301,11 +318,8 @@ void OniDevice::setDacManual(int value)
 void OniDevice::enableLeds(bool ledsOn)
 {
 
-    oni_write_reg_bit(ctx,
-        DEVICE_RHYTHM,
-        MODE,
-        LED_ENABLE,
-        ledsOn);
+    oni_reg_val_t val = ledsOn ? 1 << LED_ENABLE : 0;
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, MODE, val, 1 << LED_ENABLE);
     
 }
 
@@ -313,7 +327,8 @@ void OniDevice::enableLeds(bool ledsOn)
 void OniDevice::setClockDivider(int divide_factor)
 {
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, SYNC_CLKOUT_DIVIDE, divide_factor);
+    oni_reg_val_t val = divide_factor;
+    oni_write_reg(ctx, DEVICE_RHYTHM, SYNC_CLKOUT_DIVIDE, val);
 
 }
 
@@ -321,34 +336,37 @@ void OniDevice::setClockDivider(int divide_factor)
 void OniDevice::setDacGain(int gain)
 {
 
-    // CHECK
-
-    if ((gain < 0) || (gain > 7)) {
-        std::cerr << "Error in OniDevice::setDacGain: gain setting out of range.\n";
+    if (gain < 0 || gain > 7) {
+        std::cerr << "Error in Rhd2000ONIBoard::setDacGain: gain out of range." << std::endl;
         return;
     }
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, DAC_CTL, gain << 7, 0x07 << 7);
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, DAC_CTL, gain << 13);
 }
 
 // 
 void OniDevice::setAudioNoiseSuppress(int noiseSuppress)
 {
 
-    std::cout << "OniDevice::setAudioNoiseSuppress not implemented." << std::endl;
+    if (noiseSuppress < 0 || noiseSuppress > 127) {
+        std::cerr << "Error in Rhd2000ONIBoard::setAudioNoiseSuppress: noiseSuppress out of range." << std::endl;
+        return;
+    }
 
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, DAC_CTL, noiseSuppress, 0x7F);
 }
 
 // 
 void OniDevice::setExternalFastSettleChannel(int channel)
 {
 
-    if ((channel < 0) || (channel > 15)) {
-        std::cerr << "Error in OniDevice::setExternalFastSettleChannel: channel out of range.\n";
+    if (channel < 0 || channel > 15) {
+        std::cerr << "Error in Rhd2000ONIBoard::setExternalFastSettleChannel: channel " << channel << " out of range." << std::endl;
         return;
     }
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, EXTERNAL_FAST_SETTLE, channel);
+    oni_reg_val_t val = channel;
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, EXTERNAL_FAST_SETTLE, val, 0x0F);
 
 }
 
@@ -356,31 +374,14 @@ void OniDevice::setExternalFastSettleChannel(int channel)
 void OniDevice::setExternalDigOutChannel(BoardPort port, int channel)
 {
 
-    if ((channel < 0) || (channel > 15)) {
-        std::cerr << "Error in OniDevice::setExternalDigOutChannel: channel out of range.\n";
+    if (channel < 0 || channel > 15) {
+        std::cerr << "Error in Rhd2000ONIBoard::setExternalDigOutChannel: channel out of range." << std::endl;
         return;
     }
 
-    oni_reg_addr_t reg;
-
-    switch (port) {
-    case PortA:
-        reg = EXTERNAL_DIGOUT_A;
-        break;
-    case PortB:
-        reg = EXTERNAL_DIGOUT_B;
-        break;
-    case PortC:
-        reg = EXTERNAL_DIGOUT_C;
-        break;
-    case PortD:
-        reg = EXTERNAL_DIGOUT_D;
-        break;
-    default:
-        std::cerr << "Error in OniDevice::setExternalDigOutChannel: port out of range.\n";
-    }
-
-    oni_write_reg(ctx, DEVICE_RHYTHM, reg, channel);
+    oni_reg_addr_t reg = EXTERNAL_DIGOUT_A + port;
+    oni_reg_val_t val = channel;
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, reg, val, 0x0F);
 
 }
 
@@ -388,14 +389,16 @@ void OniDevice::setExternalDigOutChannel(BoardPort port, int channel)
 void OniDevice::setDacHighpassFilter(double cutoff)
 {
 
-    // CHECK
+    double b;
+    int filterCoefficient;
+    const double pi = 3.1415926535897;
 
     // Note that the filter coefficient is a function of the amplifier sample rate, so this
     // function should be called after the sample rate is changed.
-    double b = 1.0 - exp(-1.0 * TwoPi * cutoff / getSampleRate());
+    b = 1.0 - exp(-2.0 * pi * cutoff / getSampleRate());
 
     // In hardware, the filter coefficient is represented as a 16-bit number.
-    int filterCoefficient = (int)floor(65536.0 * b + 0.5);
+    filterCoefficient = (int)floor(65536.0 * b + 0.5);
 
     if (filterCoefficient < 1) {
         filterCoefficient = 1;
@@ -404,7 +407,8 @@ void OniDevice::setDacHighpassFilter(double cutoff)
         filterCoefficient = 65535;
     }
 
-    oni_write_reg(ctx, DEVICE_RHYTHM, HPF, filterCoefficient);
+    oni_reg_val_t val = filterCoefficient;
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, HPF, val, 0xFFFF);
 
 }
 
@@ -412,54 +416,20 @@ void OniDevice::setDacHighpassFilter(double cutoff)
 void OniDevice::setDacThreshold(int dacChannel, int threshold, bool trigPolarity)
 {
 
-    // check
-
-    if ((dacChannel < 0) || (dacChannel > 7)) {
-        std::cerr << "Error in OniDevice::setDacThreshold: dacChannel out of range.\n";
+    if (dacChannel < 0 || dacChannel > 7) {
+        std::cerr << "Error in Rhd2000ONIBoard::setDacThreshold: dacChannel out of range." << std::endl;
         return;
     }
 
-    if ((threshold < 0) || (threshold > 65535)) {
-        std::cerr << "Error in OniDevice::setDacThreshold: threshold out of range.\n";
+    if (threshold < 0 || threshold > 65535) {
+        std::cerr << "Error in Rhd2000ONIBoard::setDacThreshold: threshold out of range." << std::endl;
         return;
     }
 
-    oni_reg_addr_t reg;
+    oni_reg_addr_t reg = DAC_THRESH_1 + dacChannel;
+    oni_reg_val_t val = (threshold & 0x0FFFF) + ((trigPolarity ? 1 : 0) << 16);
 
-    switch (dacChannel)
-    {
-    case 0:
-        reg = DAC_THRESH_1;
-        break;
-    case 1:
-        reg = DAC_THRESH_2;
-        break;
-    case 2:
-        reg = DAC_THRESH_1;
-        break;
-    case 3:
-        reg = DAC_THRESH_2;
-        break;
-    case 4:
-        reg = DAC_THRESH_1;
-        break;
-    case 5:
-        reg = DAC_THRESH_2;
-        break;
-    case 6:
-        reg = DAC_THRESH_1;
-        break;
-    case 7:
-        reg = DAC_THRESH_2;
-        break;
-    default:
-        std::cout << "Error in OniDevice::setDacThreshold: dacChannel out of range." << std::endl;
-    }
-
-    threshold += 65536 * trigPolarity;
-
-    // Set threshold level.
-    oni_write_reg(ctx, DEVICE_RHYTHM, reg, threshold);
+    oni_write_reg(ctx, DEVICE_RHYTHM, reg, val);
 
 }
 
@@ -467,16 +437,12 @@ void OniDevice::setDacThreshold(int dacChannel, int threshold, bool trigPolarity
 void OniDevice::setTtlMode(int mode)
 {
 
-    if ((mode < 0) || (mode > 1)) {
-        std::cerr << "Error in OniDevice::setTtlMode: mode out of range.\n";
+    if (mode < 0 || mode > 1) {
+        std::cerr << "Error in Rhd2000ONIBoard::setTtlMode: mode out of range." << std::endl;
         return;
     }
 
-    oni_write_reg_bit(ctx,
-        DEVICE_RHYTHM,
-        MODE,
-        TTL_OUT_MODE,
-        mode);
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, MODE, mode << TTL_OUT_MODE, 1 << TTL_OUT_MODE);
 
 }
  
@@ -496,6 +462,20 @@ bool OniDevice::setSampleRate(AmplifierSampleRate newSampleRate)
 }
 
 
+void OniDevice::setDataSource(int stream, BoardDataSource dataSource)
+{
+
+    if (stream < 0 || stream >(maxNumDataStreams() - 1)) {
+        std::cerr << "Error in Rhd2000ONIBoard::setDataSource: stream out of range." << std::endl;
+        return;
+    }
+
+    oni_reg_addr_t reg = DATA_STREAM_1_8_SEL + int(stream / 8);
+    oni_reg_val_t bitShift = 4 * (stream % 8);
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, reg, dataSource << bitShift, 0x000f << bitShift);
+}
+
+
 void OniDevice::enableDataStream(int stream, bool enabled)
 {
 
@@ -506,17 +486,14 @@ void OniDevice::enableDataStream(int stream, bool enabled)
 
     if (enabled) {
         if (dataStreamEnabled[stream] == 0) {
-
-            oni_write_reg(ctx, DEVICE_RHYTHM, DATA_STREAM_EN, 0x00000001 << stream);
+            oni_write_reg_mask(ctx, DEVICE_RHYTHM, DATA_STREAM_EN, 0x0001 << stream, 0x0001 << stream);
             dataStreamEnabled[stream] = 1;
-            numDataStreams++;
+            ++numDataStreams;
         }
     }
     else {
         if (dataStreamEnabled[stream] == 1) {
-
-            oni_write_reg(ctx, DEVICE_RHYTHM, DATA_STREAM_EN, 0x00000000 << stream);
-
+            oni_write_reg_mask(ctx, DEVICE_RHYTHM, DATA_STREAM_EN, 0x0000 << stream, 0x0001 << stream);
             dataStreamEnabled[stream] = 0;
             numDataStreams--;
         }
@@ -532,34 +509,9 @@ void OniDevice::enableDac(int dacChannel, bool enabled)
         return;
     }
 
-    unsigned int enableVal = 0x0800;
-
-    switch (dacChannel) {
-    case 0:
-        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_1, 10, enabled);
-        break;
-    case 1:
-        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_2, 10, enabled);
-        break;
-    case 2:
-        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_3, 10, enabled);
-        break;
-    case 3:
-        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_4, 10, enabled);
-        break;
-    case 4:
-        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_5, 10, enabled);
-        break;
-    case 5:
-        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_6, 10, enabled);
-        break;
-    case 6:
-        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_7, 10, enabled);
-        break;
-    case 7:
-        oni_write_reg_bit(ctx, DEVICE_RHYTHM, DAC_SEL_8, 10, enabled);
-        break;
-    }
+    oni_reg_addr_t reg = DAC_SEL_1 + dacChannel;
+    oni_reg_val_t val = enabled ? 0x0400 : 0;
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, reg, val, 0x0400);
 
 }
 
@@ -567,11 +519,8 @@ void OniDevice::enableDac(int dacChannel, bool enabled)
 void OniDevice::enableExternalFastSettle(bool enable)
 {
 
-    oni_write_reg_bit(ctx,
-        DEVICE_RHYTHM,
-        EXTERNAL_FAST_SETTLE,
-        4,
-        enable);
+    oni_reg_val_t val = enable ? 1 << 4 : 0;
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, EXTERNAL_FAST_SETTLE, val, 1 << 4);
 
 }
 
@@ -580,30 +529,9 @@ void OniDevice::enableExternalDigOut(BoardPort port, bool enable)
 {
 
     
-    oni_reg_addr_t addr;
-
-    switch (port) {
-    case PortA:
-        addr = EXTERNAL_DIGOUT_A;
-        break;
-    case PortB:
-        addr = EXTERNAL_DIGOUT_B;
-        break;
-    case PortC:
-        addr = EXTERNAL_DIGOUT_C;
-        break;
-    case PortD:
-        addr = EXTERNAL_DIGOUT_D;
-        break;
-    default:
-        std::cerr << "Error in OniDevice::enableExternalDigOut: port out of range.\n";
-    }
-
-    oni_write_reg_bit(ctx,
-        DEVICE_RHYTHM,
-        addr,
-        4,
-        enable);
+    oni_reg_addr_t reg = EXTERNAL_DIGOUT_A + port;
+    oni_reg_val_t val = enable ? 1 << 4 : 0;
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, reg, val, 1 << 4);
  
 }
 
@@ -611,7 +539,8 @@ void OniDevice::enableExternalDigOut(BoardPort port, bool enable)
 void OniDevice::enableDacHighpassFilter(bool enable)
 {
 
-    oni_write_reg_bit(ctx, DEVICE_RHYTHM, HPF, 16, enable);
+    oni_reg_val_t val = enable ? 1 << 16 : 0;
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, HPF, val, 1 << 16);
 
 }
 
@@ -626,56 +555,19 @@ void OniDevice::enableDacReref(bool enabled)
 void OniDevice::selectDacDataStream(int dacChannel, int stream)
 {
 
-    if ((dacChannel < 0) || (dacChannel > 7)) {
-        std::cerr << "Error in OniDevice::selectDacDataStream: dacChannel out of range.\n";
+    if (dacChannel < 0 || dacChannel > 7) {
+        std::cerr << "Error in Rhd2000ONIBoard::selectDacDataStream: dacChannel out of range." << std::endl;
         return;
     }
 
-    int maxStream = 16;
-
-    if (stream < 0 || stream > maxStream) {
-        std::cerr << "Error in OniDevice::selectDacDataStream: stream out of range.\n";
+    if (stream < 0 || stream > maxNumDataStreams() + 1) {
+        std::cerr << "Error in Rhd2000ONIBoard::selectDacDataStream: stream out of range." << std::endl;
         return;
     }
 
-    oni_reg_addr_t addr;
-
-    switch (dacChannel) {
-    case 0:
-        addr = DAC_SEL_1;
-        break;
-    case 1:
-        addr = DAC_SEL_2;
-        break;
-    case 2:
-        addr = DAC_SEL_3;
-        break;
-    case 3:
-        addr = DAC_SEL_4;
-        break;
-    case 4:
-        addr = DAC_SEL_5;
-        break;
-    case 5:
-        addr = DAC_SEL_6;
-        break;
-    case 6:
-        addr = DAC_SEL_7;
-        break;
-    case 7:
-        addr = DAC_SEL_8;
-        break;
-    }
-
-    oni_reg_val_t register_value;
-
-    oni_read_reg(ctx, DEVICE_RHYTHM, addr, &register_value);
-
-    oni_reg_val_t enabled = register_value >> 10;
-    oni_reg_val_t channel = register_value & 0b11111;
-    oni_reg_val_t new_value = (enabled << 10) + (stream << 5) + channel;
-
-    oni_write_reg(ctx, DEVICE_RHYTHM, addr, new_value);
+    oni_reg_addr_t reg = DAC_SEL_1 + dacChannel;
+    oni_reg_val_t val = stream << 5;
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, reg, val, 0x1F << 5);
 
 }
 
@@ -683,54 +575,19 @@ void OniDevice::selectDacDataStream(int dacChannel, int stream)
 void OniDevice::selectDacDataChannel(int dacChannel, int dataChannel)
 {
 
-    if ((dacChannel < 0) || (dacChannel > 7)) {
-        std::cerr << "Error in OniDevice::selectDacDataChannel: dacChannel out of range.\n";
+    if (dacChannel < 0 || dacChannel > 7) {
+        std::cerr << "Error in Rhd2000ONIBoard::selectDacDataChannel: dacChannel out of range." << std::endl;
         return;
     }
 
-    if ((dataChannel < 0) || (dataChannel > 31)) {
-        std::cerr << "Error in OniDevice::selectDacDataChannel: dataChannel out of range.\n";
+    if (dataChannel < 0 || dataChannel > 31) {
+        std::cerr << "Error in Rhd2000ONIBoard::selectDacDataChannel: dataChannel out of range." << std::endl;
         return;
     }
 
-    oni_reg_addr_t addr;
-
-    switch (dacChannel) {
-    case 0:
-        addr = DAC_SEL_1;
-        break;
-    case 1:
-        addr = DAC_SEL_2;
-        break;
-    case 2:
-        addr = DAC_SEL_3;
-        break;
-    case 3:
-        addr = DAC_SEL_4;
-        break;
-    case 4:
-        addr = DAC_SEL_5;
-        break;
-    case 5:
-        addr = DAC_SEL_6;
-        break;
-    case 6:
-        addr = DAC_SEL_7;
-        break;
-    case 7:
-        addr = DAC_SEL_8;
-        break;
-    }
-
-    oni_reg_val_t register_value;
-
-    oni_read_reg(ctx, DEVICE_RHYTHM, addr, &register_value);
-
-    oni_reg_val_t enabled = register_value >> 10;
-    oni_reg_val_t stream = register_value & 0b1111100000;
-    oni_reg_val_t new_value = (enabled << 10) + stream + dataChannel;
-
-    oni_write_reg(ctx, DEVICE_RHYTHM, addr, new_value);
+    oni_reg_addr_t reg = DAC_SEL_1 + dacChannel;
+    oni_reg_val_t val = dataChannel;
+    oni_write_reg_mask(ctx, DEVICE_RHYTHM, reg, val, 0x1F);
 
 }
 
@@ -738,15 +595,18 @@ void OniDevice::selectDacDataChannel(int dacChannel, int dataChannel)
 void OniDevice::selectAuxCommandLength(AuxCmdSlot auxCommandSlot, int loopIndex, int endIndex)
 {
 
-    int maxIndex = 1024;
-
-    if (loopIndex < 0 || loopIndex > maxIndex - 1) {
-        std::cerr << "Error in OniDevice::selectAuxCommandLength: loopIndex out of range.\n";
+    if (auxCommandSlot != AuxCmd1 && auxCommandSlot != AuxCmd2 && auxCommandSlot != AuxCmd3) {
+        std::cerr << "Error in OniDevice::selectAuxCommandLength: auxCommandSlot out of range." << std::endl;
         return;
     }
 
-    if (endIndex < 0 || endIndex > maxIndex - 1) {
-        std::cerr << "Error in OniDevice::selectAuxCommandLength: endIndex out of range.\n";
+    if (loopIndex < 0 || loopIndex > 1023) {
+        std::cerr << "Error in OniDevice::selectAuxCommandLength: loopIndex out of range." << std::endl;
+        return;
+    }
+
+    if (endIndex < 0 || endIndex > 1023) {
+        std::cerr << "Error in OniDevice::selectAuxCommandLength: endIndex out of range." << std::endl;
         return;
     }
 
@@ -763,9 +623,6 @@ void OniDevice::selectAuxCommandLength(AuxCmdSlot auxCommandSlot, int loopIndex,
         oni_write_reg(ctx, DEVICE_RHYTHM, LOOP_AUXCMD_INDEX_3, loopIndex);
         oni_write_reg(ctx, DEVICE_RHYTHM, MAX_AUXCMD_INDEX_3, endIndex);
         break;
-    case AuxCmd4:
-        // Should not be reached, as AuxCmd4 is Stim-only.
-        break;
     }
 
 
@@ -778,11 +635,11 @@ void OniDevice::selectAuxCommandBank(BoardPort port, AuxCmdSlot auxCommandSlot, 
     int bitShift;
 
     if (auxCommandSlot != AuxCmd1 && auxCommandSlot != AuxCmd2 && auxCommandSlot != AuxCmd3) {
-        std::cerr << "Error in OniDevice::selectAuxCommandBank: auxCommandSlot out of range.\n";
+        std::cerr << "Error in Rhd2000ONIBoard::selectAuxCommandBank: auxCommandSlot out of range." << std::endl;
         return;
     }
-    if ((bank < 0) || (bank > 15)) {
-        std::cerr << "Error in OniDevice::selectAuxCommandBank: bank out of range.\n";
+    if (bank < 0 || bank > 15) {
+        std::cerr << "Error in Rhd2000ONIBoard::selectAuxCommandBank: bank out of range." << std::endl;
         return;
     }
 
@@ -803,18 +660,14 @@ void OniDevice::selectAuxCommandBank(BoardPort port, AuxCmdSlot auxCommandSlot, 
 
     switch (auxCommandSlot) {
     case AuxCmd1:
-        oni_write_reg(ctx, DEVICE_RHYTHM, AUXCMD_BANK_1, bank << bitShift);
+        oni_write_reg_mask(ctx, DEVICE_RHYTHM, AUXCMD_BANK_1, bank << bitShift, 0x000f << bitShift);
         break;
     case AuxCmd2:
-        oni_write_reg(ctx, DEVICE_RHYTHM, AUXCMD_BANK_2, bank << bitShift);
+        oni_write_reg_mask(ctx, DEVICE_RHYTHM, AUXCMD_BANK_2, bank << bitShift, 0x000f << bitShift);
         break;
     case AuxCmd3:
-        oni_write_reg(ctx, DEVICE_RHYTHM, AUXCMD_BANK_3, bank << bitShift);
+        oni_write_reg_mask(ctx, DEVICE_RHYTHM, AUXCMD_BANK_3, bank << bitShift, 0x000f << bitShift);
         break;
-    case AuxCmd4:
-        // Should not be reached, as AuxCmd4 is Stim-only.
-        break;
-
     }
 
 }
@@ -885,6 +738,47 @@ void OniDevice::uploadCommandList(const std::vector<unsigned int>& commandList, 
 
     }
   
+}
+
+void OniDevice::printCommandList(const std::vector<unsigned int>& commandList) const
+{
+    unsigned int i;
+    int cmd, channel, reg, data;
+
+    std::cout << std::endl;
+    for (i = 0; i < commandList.size(); ++i) {
+        cmd = commandList[i];
+        if (cmd < 0 || cmd > 0xffff) {
+            std::cout << "  command[" << i << "] = INVALID COMMAND: " << cmd << std::endl;
+        }
+        else if ((cmd & 0xc000) == 0x0000) {
+            channel = (cmd & 0x3f00) >> 8;
+            std::cout << "  command[" << i << "] = CONVERT(" << channel << ")" << std::endl;
+        }
+        else if ((cmd & 0xc000) == 0xc000) {
+            reg = (cmd & 0x3f00) >> 8;
+            std::cout << "  command[" << i << "] = READ(" << reg << ")" << std::endl;
+        }
+        else if ((cmd & 0xc000) == 0x8000) {
+            reg = (cmd & 0x3f00) >> 8;
+            data = (cmd & 0x00ff);
+            std::cout << "  command[" << i << "] = WRITE(" << reg << ",";
+            std::cout << std::hex << std::uppercase << std::internal << std::setfill('0') << std::setw(2) << data << std::nouppercase << std::dec;
+            std::cout << ")" << std::endl;
+        }
+        else if (cmd == 0x5500) {
+            std::cout << "  command[" << i << "] = CALIBRATE" << std::endl;
+        }
+        else if (cmd == 0x6a00) {
+            std::cout << "  command[" << i << "] = CLEAR" << std::endl;
+        }
+        else {
+            std::cout << "  command[" << i << "] = INVALID COMMAND: ";
+            std::cout << std::hex << std::uppercase << std::internal << std::setfill('0') << std::setw(4) << cmd << std::nouppercase << std::dec;
+            std::cout << std::endl;
+        }
+    }
+    std::cout << std::endl;
 }
 
 // Scan all SPI ports to find all connected RHD/RHS amplifier chips.  Read the chip ID from on-chip ROM

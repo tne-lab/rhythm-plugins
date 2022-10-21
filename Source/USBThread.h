@@ -26,7 +26,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <BasicJuceHeader.h>
 #include <atomic>
 
+#include "oni-api/oni.h"
+
 class AbstractRHXController;
+class OniDevice;
 
 namespace RhythmNode
 {
@@ -60,8 +63,10 @@ namespace RhythmNode
 	private:
 		
 		AbstractRHXController* const m_board;
+		OniDevice* m_oni_device;
 		
 		HeapBlock<unsigned char> m_buffers[2];
+		oni_frame_t* oni_buffers[2];
 		
 		long m_lastRead[2];
 		
@@ -70,6 +75,8 @@ namespace RhythmNode
 		bool m_canRead{ false };
 		
 		CriticalSection m_lock;
+
+		bool useOniFrame = false;
 	};
 }
 #endif
