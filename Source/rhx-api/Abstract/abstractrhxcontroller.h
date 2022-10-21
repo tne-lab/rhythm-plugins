@@ -154,6 +154,7 @@ public:
     virtual bool readDataBlock(RHXDataBlock *dataBlock) = 0;
     virtual bool readDataBlocks(int numBlocks, std::deque<RHXDataBlock*> &dataQueue) = 0;
     virtual long readDataBlocksRaw(int numBlocks, uint8_t* buffer) = 0;
+    virtual bool readRawDataBlock(unsigned char** bufferPtr, int nSamples = -1) { return true; };
 
     virtual void setContinuousRunMode(bool continuousMode) = 0;
     virtual void setMaxTimeStep(unsigned int maxTimeStep) = 0;

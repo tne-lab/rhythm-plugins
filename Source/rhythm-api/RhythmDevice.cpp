@@ -39,6 +39,7 @@ RhythmDevice::RhythmDevice(ControllerType type_, AmplifierSampleRate sampleRate_
     INIT_STEP = type_ == ControllerOEOpalKellyUSB3 ? 256 : 60;
 
     std::cout << "RhythmDevice constructor" << std::endl;
+    std::cout << "Max num streams: " << maxNumDataStreams() << std::endl;
 }
 
 RhythmDevice::~RhythmDevice()
@@ -52,12 +53,6 @@ int RhythmDevice::open(const std::string& boardSerialNumber, const char* library
     evalBoard = std::make_unique<Rhd2000EvalBoard>();
 
     int return_code = evalBoard->open(libraryFilePath);
-
-    if (return_code == 1)
-    {
-        dataBlock = std::make_unique<Rhd2000DataBlock>(1, evalBoard->isUSB3());
-
-    }
 
     return return_code;
 }
@@ -88,7 +83,7 @@ void RhythmDevice::updateRegisters()
     chipRegisters.defineSampleRate(SampleRate30000Hz);
 
     int commandSequenceLength;
-    std::vector<int> commandList;
+    std::vector<unsigned int> commandList;
 
     commandSequenceLength = chipRegisters.createCommandListRegisterConfig(commandList, true);
     // Upload version with ADC calibration to AuxCmd3 RAM Bank 0.
@@ -132,17 +127,19 @@ bool RhythmDevice::readDataBlock(RHXDataBlock* dataBlock)
 bool RhythmDevice::readDataBlocks(int numBlocks, std::deque<RHXDataBlock*>& dataQueue)
 {
 
-   
-    return true;
+    return evalBoard->readDataBlocks(numBlocks, dataQueue);
 }
 
 
 long RhythmDevice::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
 {
-    
-   
 
-    return 0;
+    return evalBoard->readDataBlocksRaw(numBlocks, buffer);
+}
+
+bool RhythmDevice::readRawDataBlock(unsigned char** bufferPtr, int nSamples)
+{
+    return evalBoard->readRawDataBlock(bufferPtr, nSamples);
 }
 
 void RhythmDevice::setContinuousRunMode(bool continuousMode)
@@ -173,7 +170,7 @@ void RhythmDevice::setCableDelay(BoardPort port, int delay)
 
 void RhythmDevice::setDspSettle(bool enabled)
 {
-
+    evalBoard->setDspSettle(enabled);
    
 }
 
@@ -181,7 +178,7 @@ void RhythmDevice::setDspSettle(bool enabled)
 void RhythmDevice::setTtlOut(const int* ttlOutArray)
 {
  
-   
+    evalBoard->setTtlOut(ttlOutArray);
     
 }
 
@@ -189,22 +186,21 @@ void RhythmDevice::setTtlOut(const int* ttlOutArray)
 void RhythmDevice::setDacManual(int value)
 {
 
-    std::cout << "RhythmDevice::setDacManual not implemented." << std::endl;
-
+    evalBoard->setDacManual(value);
 }
 
 
 void RhythmDevice::enableLeds(bool ledsOn)
 {
 
-   
+    evalBoard->enableBoardLeds(ledsOn);
 }
 
 // Set output BNC clock divide factor (Open Ephys boards only)
 void RhythmDevice::setClockDivider(int divide_factor)
 {
 
-    
+    evalBoard->setClockDivider(divide_factor);
 
 }
 
@@ -212,81 +208,43 @@ void RhythmDevice::setClockDivider(int divide_factor)
 void RhythmDevice::setDacGain(int gain)
 {
 
-  
+    evalBoard->setDacGain(gain);
 }
 
 // 
 void RhythmDevice::setAudioNoiseSuppress(int noiseSuppress)
 {
 
-    std::cout << "RhythmDevice::setAudioNoiseSuppress not implemented." << std::endl;
+    evalBoard->setAudioNoiseSuppress(noiseSuppress);
 
 }
 
-// 
+
 void RhythmDevice::setExternalFastSettleChannel(int channel)
 {
 
-    if ((channel < 0) || (channel > 15)) {
-        std::cerr << "Error in RhythmDevice::setExternalFastSettleChannel: channel out of range.\n";
-        return;
-    }
-
-    
+    evalBoard->setExternalFastSettleChannel(channel);
 }
 
-// 
+
 void RhythmDevice::setExternalDigOutChannel(BoardPort port, int channel)
 {
 
-    if ((channel < 0) || (channel > 15)) {
-        std::cerr << "Error in RhythmDevice::setExternalDigOutChannel: channel out of range.\n";
-        return;
-    }
-
-   
-
+    evalBoard->setExternalDigOutChannel(Rhd2000EvalBoard::BoardPort(port), channel);
 }
 
-// 
+
 void RhythmDevice::setDacHighpassFilter(double cutoff)
 {
 
-    // CHECK
-
-    // Note that the filter coefficient is a function of the amplifier sample rate, so this
-    // function should be called after the sample rate is changed.
-    double b = 1.0 - exp(-1.0 * TwoPi * cutoff / getSampleRate());
-
-    // In hardware, the filter coefficient is represented as a 16-bit number.
-    int filterCoefficient = (int)floor(65536.0 * b + 0.5);
-
-    if (filterCoefficient < 1) {
-        filterCoefficient = 1;
-    }
-    else if (filterCoefficient > 65535) {
-        filterCoefficient = 65535;
-    }
-
-
+    evalBoard->setDacHighpassFilter(cutoff);
 }
 
-// 
+
 void RhythmDevice::setDacThreshold(int dacChannel, int threshold, bool trigPolarity)
 {
-
-    // check
-
-    if ((dacChannel < 0) || (dacChannel > 7)) {
-        std::cerr << "Error in RhythmDevice::setDacThreshold: dacChannel out of range.\n";
-        return;
-    }
-
-    if ((threshold < 0) || (threshold > 65535)) {
-        std::cerr << "Error in RhythmDevice::setDacThreshold: threshold out of range.\n";
-        return;
-    }
-
+    
+    evalBoard->setDacThreshold(dacChannel, threshold, trigPolarity);
 
 }
 
@@ -294,12 +252,7 @@ void RhythmDevice::setDacThreshold(int dacChannel, int threshold, bool trigPolar
 void RhythmDevice::setTtlMode(int mode)
 {
 
-    if ((mode < 0) || (mode > 1)) {
-        std::cerr << "Error in RhythmDevice::setTtlMode: mode out of range.\n";
-        return;
-    }
-
-  
+    evalBoard->setTtlMode(mode);
 
 }
  
@@ -321,7 +274,7 @@ bool RhythmDevice::setSampleRate(AmplifierSampleRate newSampleRate)
 
 void RhythmDevice::enableDataStream(int stream, bool enabled)
 {
-    if (stream < 0 || stream >(maxNumDataStreams() - 1)) {
+    if (stream < 0 || stream > (maxNumDataStreams() - 1)) {
         std::cerr << "Error in RhythmDevice::enableDataStream: stream out of range.\n";
         return;
     }
@@ -348,20 +301,21 @@ void RhythmDevice::enableDataStream(int stream, bool enabled)
 void RhythmDevice::enableDac(int dacChannel, bool enabled)
 {
 
-  
+    evalBoard->enableDac(dacChannel, enabled);
 
 }
 
 
 void RhythmDevice::enableExternalFastSettle(bool enable)
 {
-
+    evalBoard->enableExternalFastSettle(enable);
 }
 
-// .
+
 void RhythmDevice::enableExternalDigOut(BoardPort port, bool enable)
 {
 
+    evalBoard->enableExternalDigOut(Rhd2000EvalBoard::BoardPort(port), enable);
    
 }
 
@@ -369,20 +323,21 @@ void RhythmDevice::enableExternalDigOut(BoardPort port, bool enable)
 void RhythmDevice::enableDacHighpassFilter(bool enable)
 {
 
+    evalBoard->enableDacHighpassFilter(enable);
 
 }
 
 void RhythmDevice::enableDacReref(bool enabled)
 {
 
-
+    std::cerr << "RhythmDevice::enableDacReref: not implemented." << std::endl;
 }
 
 
 void RhythmDevice::selectDacDataStream(int dacChannel, int stream)
 {
 
-   
+    evalBoard->selectDacDataStream(dacChannel, stream);
 
 }
 
@@ -390,7 +345,7 @@ void RhythmDevice::selectDacDataStream(int dacChannel, int stream)
 void RhythmDevice::selectDacDataChannel(int dacChannel, int dataChannel)
 {
 
-  
+    evalBoard->selectDacDataChannel(dacChannel, dataChannel);
 
 }
 
@@ -398,7 +353,7 @@ void RhythmDevice::selectDacDataChannel(int dacChannel, int dataChannel)
 void RhythmDevice::selectAuxCommandLength(AuxCmdSlot auxCommandSlot, int loopIndex, int endIndex)
 {
 
-   
+    evalBoard->selectAuxCommandLength(Rhd2000EvalBoard::AuxCmdSlot(auxCommandSlot), loopIndex, endIndex);
 
 
 }
@@ -407,7 +362,7 @@ void RhythmDevice::selectAuxCommandLength(AuxCmdSlot auxCommandSlot, int loopInd
 void RhythmDevice::selectAuxCommandBank(BoardPort port, AuxCmdSlot auxCommandSlot, int bank)
 {
 
-  
+    evalBoard->selectAuxCommandBank(Rhd2000EvalBoard::BoardPort(port), Rhd2000EvalBoard::AuxCmdSlot(auxCommandSlot), bank);
 
 }
 
@@ -417,17 +372,17 @@ int RhythmDevice::getBoardMode()
     return 0; 
 }
 
-// 
+
 int RhythmDevice::getNumSPIPorts(bool& expanderBoardDetected)
 {
     return 4;
 }
 
-// 
+ 
 void RhythmDevice::clearTtlOut()
 {
 
-   
+    evalBoard->clearTtlOut();
 
 }
 
@@ -435,7 +390,7 @@ void RhythmDevice::clearTtlOut()
 void RhythmDevice::uploadCommandList(const std::vector<unsigned int>& commandList, AuxCmdSlot auxCommandSlot, int bank)
 {
 
-   
+    evalBoard->uploadCommandList(commandList, Rhd2000EvalBoard::AuxCmdSlot(auxCommandSlot), bank);
   
 }
 
@@ -486,10 +441,10 @@ int RhythmDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vecto
     BoardDataSource initStreamDdrPorts[8] = { PortA1Ddr, PortA2Ddr, PortB1Ddr, PortB2Ddr,
                                               PortC1Ddr, PortC2Ddr, PortD1Ddr, PortD2Ddr };
 
-    for (int i = 0; i < 8; i++)
+    for (int i = 0; i < maxMISOLines; i++)
         evalBoard->setDataSource(i, Rhd2000EvalBoard::BoardDataSource(initStreamPorts[i]));
 
-    for (int i = 0; i < 8; i++)
+    for (int i = 0; i < maxMISOLines; i++)
         evalBoard->enableDataStream(i, true);
 
     // Run the SPI interface for multiple command sequences (i.e., NRepeats data blocks).
@@ -598,6 +553,7 @@ int RhythmDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vecto
     setCableDelay(PortB, max(optimumDelay[2], optimumDelay[3]));
     setCableDelay(PortC, max(optimumDelay[4], optimumDelay[5]));
     setCableDelay(PortD, max(optimumDelay[6], optimumDelay[7]));
+
     if (type == ControllerRecordUSB3) {
         setCableDelay(PortE, max(optimumDelay[8], optimumDelay[9]));
         setCableDelay(PortF, max(optimumDelay[10], optimumDelay[11]));
@@ -637,6 +593,12 @@ int RhythmDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vecto
     }
 
     // Reconfigure USB data streams in consecutive order to accommodate all connected chips.
+
+    std::cout << "Reconfigure USB streams" << std::endl;
+
+    for (int i = 0; i < maxMISOLines; i++)
+        evalBoard->enableDataStream(i, false);
+
     if (type == ControllerOEOpalKellyUSB2) {
         int stream = 0;
         for (int oldStream = 0; oldStream < maxMISOLines; ++oldStream) {
@@ -665,10 +627,6 @@ int RhythmDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vecto
                 setDataSource(stream + 1, initStreamDdrPorts[oldStream]);
                 stream += 2;
             }
-        }
-        // Note: commmandStream not defined for ControllerRecordUSB2 type.
-        for (; stream < maxNumStreams; ++stream) {
-            enableDataStream(stream, false);    // Disable unused data streams.
         }
     }
     else if (type == ControllerOEOpalKellyUSB3) {
@@ -701,12 +659,10 @@ int RhythmDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vecto
                 commandStream[stream + 1] = 2 * oldStream + 1;
                 stream += 2;
             }
-            else {
-                enableDataStream(2 * oldStream, false);    // Disable unused data streams.
-                enableDataStream(2 * oldStream + 1, false);
-            }
         }
     }
+
+    std::cout << "Done reconfiguring USB streams" << std::endl;
 
     return returnValue;
 }
@@ -716,30 +672,27 @@ unsigned int RhythmDevice::numWordsInFifo()
 {
 
   
-    return 0;
+    return evalBoard->numWordsInFifo();
 }
 
 
 bool RhythmDevice::isDcmProgDone() const
 {
 
-    // DCM programming not supported
-
-    return true;
+    return evalBoard->isDcmProgDone();
 }
 
 
 bool RhythmDevice::isDataClockLocked() const
 {
-    // data clock cannot be locked?
 
-    return false;
+    return evalBoard->isDataClockLocked();
 }
 
 
 void RhythmDevice::forceAllDataStreamsOff()
 {
 
-
+    evalBoard->forceAllDataStreamsOff();
 }
 

@@ -29,11 +29,13 @@ using namespace RhythmNode;
 USBThread::USBThread(AbstractRHXController* b)
 	: m_board(b), Thread("USBThread")
 {
+
 }
 
 void USBThread::startAcquisition(int nBytes)
 {
-    ScopedLock lock(m_lock);
+    const ScopedLock lock(m_lock);
+
 	for (int i = 0; i < 2; i++)
 	{
 		m_lastRead[i] = 0;
@@ -47,7 +49,8 @@ void USBThread::startAcquisition(int nBytes)
 
 void USBThread::stopAcquisition()
 {
-	//std::cout << "Stopping usb thread" << std::endl;
+	std::cout << "Stopping usb thread" << std::endl;
+	
 	if (isThreadRunning())
 	{
 		if (!stopThread(1000))
@@ -59,7 +62,8 @@ void USBThread::stopAcquisition()
 
 long USBThread::usbRead(unsigned char*& buffer)
 {
-	ScopedLock lock(m_lock);
+	const ScopedLock lock(m_lock);
+
 	if (m_readBuffer == m_curBuffer)
 		return 0;
 	buffer = m_buffers[m_readBuffer].getData();
@@ -75,18 +79,21 @@ void USBThread::run()
 	while (!threadShouldExit())
 	{
 		m_lock.enter();
+		
 		if (m_canRead)
 		{
 			m_lock.exit();
 			long read;
 			do
 			{
+
 				if (threadShouldExit())
 					break;
 				read = m_board->readDataBlocksRaw(1, m_buffers[m_curBuffer].getData());
+
 			} while (read <= 0);
 			{
-				ScopedLock lock(m_lock);
+				const ScopedLock lock(m_lock);
 				m_lastRead[m_curBuffer] = read;
 				m_curBuffer = ++m_curBuffer % 2;
 				m_canRead = false;

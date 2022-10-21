@@ -564,6 +564,32 @@ void RHXDataBlock::print(int stream) const
     std::cout << std::endl;*/
 }
 
+// Write contents of data block to a binary output stream (saveOut) in little endian format.
+void RHXDataBlock::write(std::ofstream& saveOut, int numDataStreams) const
+{
+    int t, channel, stream, i;
+
+    for (t = 0; t < samplesPerDataBlock(); ++t) {
+        writeWordLittleEndian(saveOut, timeStampInternal[t]);
+        for (channel = 0; channel < 32; ++channel) {
+            for (stream = 0; stream < numDataStreams; ++stream) {
+                writeWordLittleEndian(saveOut, amplifierData(stream, channel, t));
+            }
+        }
+        for (channel = 0; channel < 3; ++channel) {
+            for (stream = 0; stream < numDataStreams; ++stream) {
+                writeWordLittleEndian(saveOut, auxiliaryData(stream, channel, t));
+            }
+        }
+        for (i = 0; i < 8; ++i) {
+            writeWordLittleEndian(saveOut, boardAdcData(i, t));
+        }
+        writeWordLittleEndian(saveOut, ttlInInternal[t]);
+        writeWordLittleEndian(saveOut, ttlOutInternal[t]);
+    }
+}
+
+
 void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
 {
 

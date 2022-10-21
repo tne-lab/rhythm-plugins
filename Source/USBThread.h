@@ -20,8 +20,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef USBTHREAD_H
-#define USBTHREAD_H
+#ifndef USBTHREAD_HH
+#define USBTHREAD_HH
 
 #include <BasicJuceHeader.h>
 #include <atomic>
@@ -56,13 +56,19 @@ namespace RhythmNode
 
 		/** Reads data into an unsigned char buffer */
 		long usbRead(unsigned char*&);
+	
 	private:
+		
 		AbstractRHXController* const m_board;
+		
 		HeapBlock<unsigned char> m_buffers[2];
+		
 		long m_lastRead[2];
+		
 		unsigned short m_curBuffer{ 0 };
 		unsigned short m_readBuffer{ 0 };
 		bool m_canRead{ false };
+		
 		CriticalSection m_lock;
 	};
 }

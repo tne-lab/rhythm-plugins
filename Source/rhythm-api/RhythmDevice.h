@@ -90,6 +90,10 @@ public:
         and write the raw bytes to a buffer. Return total number of bytes read.*/
     long readDataBlocksRaw(int numBlocks, uint8_t* buffer) override;
 
+    /** Read one USB data blocks, if the specified number is available,
+        and write the raw bytes to a buffer. Returns true if successful.*/
+    bool readRawDataBlock(unsigned char** bufferPtr, int nSamples = -1) override;
+
     /** Set the FPGA to run continuously once started (if continuousMode == true) or 
         to run until maxTimeStep is reached (if continuousMode == false).*/
     void setContinuousRunMode(bool continuousMode) override;
@@ -339,7 +343,7 @@ private:
     /** Rhythm API classes*/
     std::unique_ptr<Rhd2000EvalBoard> evalBoard;
     Rhd2000Registers chipRegisters;
-    std::unique_ptr<Rhd2000DataBlock> dataBlock;
+    //std::unique_ptr<Rhd2000DataBlock> dataBlock;
     std::vector<Rhd2000EvalBoard::BoardDataSource> enabledStreams;
 
     int INIT_STEP;

@@ -71,10 +71,10 @@ public:
     double setUpperBandwidth(double upperBandwidth);
     double setLowerBandwidth(double lowerBandwidth);
 
-    int createCommandListRegisterConfig(std::vector<int> &commandList, bool calibrate);
-    int createCommandListTempSensor(std::vector<int> &commandList);
-    int createCommandListUpdateDigOut(std::vector<int> &commandList);
-    int createCommandListZcheckDac(std::vector<int> &commandList, double frequency, double amplitude);
+    int createCommandListRegisterConfig(std::vector<unsigned int> &commandList, bool calibrate);
+    int createCommandListTempSensor(std::vector<unsigned int> &commandList);
+    int createCommandListUpdateDigOut(std::vector<unsigned int> &commandList);
+    int createCommandListZcheckDac(std::vector<unsigned int> &commandList, double frequency, double amplitude);
 
     enum Rhd2000CommandType {
         Rhd2000CommandConvert,
@@ -85,8 +85,8 @@ public:
     };
 
     int createRhd2000Command(Rhd2000CommandType commandType);
-    int createRhd2000Command(Rhd2000CommandType commandType, int arg1);
-    int createRhd2000Command(Rhd2000CommandType commandType, int arg1, int arg2);
+    int createRhd2000Command(Rhd2000CommandType commandType, unsigned int arg1);
+    int createRhd2000Command(Rhd2000CommandType commandType, unsigned int arg1, unsigned int arg2);
 
 private:
     double sampleRate;

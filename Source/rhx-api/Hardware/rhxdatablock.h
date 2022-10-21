@@ -32,6 +32,9 @@
 #define RHXDATABLOCK_H
 
 #include <cstdint>
+#include <iostream>
+#include <fstream>
+
 #include "rhxglobals.h"
 
 const int USBHeaderSizeInBytes = 8;
@@ -78,6 +81,8 @@ public:
 
     void fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex);
 
+    void write(std::ofstream& saveOut, int numDataStreams) const;
+
     static bool checkUsbHeader(const uint8_t* usbBuffer, int index, ControllerType type_);
     bool checkUsbHeader(const uint8_t* usbBuffer, int index) const;
     int getChipID(int stream, int auxCmdSlot, int &register59Value) const;
@@ -117,6 +122,17 @@ private:
     int* boardDacDataInternal;
 
     void allocateMemory();
+
+    void writeWordLittleEndian(std::ofstream& outputStream, int dataWord) const
+    {
+        unsigned short msb, lsb;
+
+        lsb = ((unsigned short)dataWord) & 0x00ff;
+        msb = (((unsigned short)dataWord) & 0xff00) >> 8;
+
+        outputStream << (unsigned char) lsb;
+        outputStream << (unsigned char) msb;
+    }
 
     inline int convertUsbWord(const uint8_t* usbBuffer, int index)
     {

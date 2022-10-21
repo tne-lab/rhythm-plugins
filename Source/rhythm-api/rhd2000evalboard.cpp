@@ -28,8 +28,6 @@
 #include <cmath>
 
 #include "rhd2000evalboard.h"
-#include "rhd2000datablock.h"
-
 #include "../rhx-api/Hardware/rhxdatablock.h"
 
 #include "okFrontPanelDLL.h"
@@ -598,7 +596,7 @@ void Rhd2000EvalBoard::printCommandList(const std::vector<int> &commandList) con
 
 // Upload an auxiliary command list to a particular command slot (AuxCmd1, AuxCmd2, or AuxCmd3) and RAM bank (0-15)
 // on the FPGA.
-void Rhd2000EvalBoard::uploadCommandList(const std::vector<int> &commandList, AuxCmdSlot auxCommandSlot, int bank)
+void Rhd2000EvalBoard::uploadCommandList(const std::vector<unsigned int> &commandList, AuxCmdSlot auxCommandSlot, int bank)
 {
     unsigned int i;
 
@@ -1048,7 +1046,7 @@ void Rhd2000EvalBoard::clearTtlOut()
 }
 
 // Set the 16 bits of the digital TTL output lines on the FPGA high or low according to integer array.
-void Rhd2000EvalBoard::setTtlOut(int ttlOutArray[])
+void Rhd2000EvalBoard::setTtlOut(const int* ttlOutArray)
 {
     int i, ttlOut;
 
@@ -1516,12 +1514,52 @@ bool Rhd2000EvalBoard::readDataBlock(RHXDataBlock *dataBlock)
     return true;
 }
 
+long Rhd2000EvalBoard::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
+{
+    unsigned int numBytesToRead;
+    long res;
+
+    numBytesToRead = numBlocks * BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+
+    std::cout << "numBlocks: " << numBlocks << std::endl;
+    std::cout << "numDataStreams: " << numDataStreams << std::endl;
+    std::cout << "BytesPerWord: " << BytesPerWord << std::endl;
+    std::cout << "numBytesToRead: " << numBytesToRead << std::endl;
+
+    if (numBytesToRead > USB_BUFFER_SIZE) {
+        std::cerr << "Error in Rhd2000EvalBoard::readDataBlock: USB buffer size exceeded.  " <<
+            "Increase value of USB_BUFFER_SIZE." << std::endl;
+        return false;
+    }
+
+    if (usb3)
+    {
+        std::cout << "usb3 read : " << numBytesToRead << " in " << USB3_BLOCK_SIZE << " blocks" << std::endl;
+        res = dev->ReadFromBlockPipeOut(PipeOutData, USB3_BLOCK_SIZE, numBytesToRead, usbBuffer);
+
+    }
+    else
+    {
+        //std::std::cout << "usb2 read: " << numBytesToRead << std::std::endl;
+        res = dev->ReadFromPipeOut(PipeOutData, numBytesToRead, usbBuffer);
+    }
+    if (res == ok_Timeout)
+    {
+        std::cerr << "CRITICAL: Timeout on pipe read. Check block and buffer sizes." << std::endl;
+    }
+
+    return true;
+}
+
+
 bool Rhd2000EvalBoard::readRawDataBlock(unsigned char** bufferPtr, int nSamples)
 {
     unsigned int numBytesToRead;
     long res;
 
-    numBytesToRead = 2 * Rhd2000DataBlock::calculateDataBlockSizeInWords(numDataStreams, usb3, nSamples);
+    numBytesToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
+
+    //std::cout << "Reading " << numBytesToRead << std::endl;
 
     if (numBytesToRead > USB_BUFFER_SIZE) {
         std::cerr << "Error in Rhd2000EvalBoard::readDataBlock: USB buffer size exceeded.  " <<
@@ -1545,27 +1583,25 @@ bool Rhd2000EvalBoard::readRawDataBlock(unsigned char** bufferPtr, int nSamples)
     {
         std::cerr << "CRITICAL: Timeout on pipe read. Check block and buffer sizes." << std::endl;
     }
+    
     *bufferPtr = usbBuffer;
+
     return true;
 }
 
 // Reads a certain number of USB data blocks, if the specified number is available, and appends them
 // to queue.  Returns true if data blocks were available.
-bool Rhd2000EvalBoard::readDataBlocks(int numBlocks, std::queue<Rhd2000DataBlock> &dataQueue)
+bool Rhd2000EvalBoard::readDataBlocks(int numBlocks, std::deque<RHXDataBlock*> &dataQueue)
 {
-    unsigned int numWordsToRead, numBytesToRead;
     int i;
-    Rhd2000DataBlock *dataBlock;
     long res;
 
-    //std::cout << " Rhd2000EvalBoard::readDataBlocks()" << std::endl;
-
-    numWordsToRead = numBlocks * dataBlock->calculateDataBlockSizeInWords(numDataStreams, usb3);
+    unsigned int numWordsToRead = BytesPerWord * RHXDataBlock::dataBlockSizeInWords(type, numDataStreams);
 
     if (numWordsInFifo() < numWordsToRead)
         return false;
 
-    numBytesToRead = 2 * numWordsToRead;
+    unsigned int numBytesToRead = BytesPerWord * numWordsToRead;
 
     if (numBytesToRead > USB_BUFFER_SIZE) {
         std::cerr << "Error in Rhd2000EvalBoard::readDataBlocks: USB buffer size exceeded.  " <<
@@ -1586,19 +1622,18 @@ bool Rhd2000EvalBoard::readDataBlocks(int numBlocks, std::queue<Rhd2000DataBlock
         std::cerr << "CRITICAL: Timeout on pipe read. Check block and buffer sizes." << std::endl;
     }
 
-    dataBlock = new Rhd2000DataBlock(numDataStreams, usb3);
     for (i = 0; i < numBlocks; ++i) {
-        dataBlock->fillFromUsbBuffer(usbBuffer, i, numDataStreams);
-        dataQueue.push(*dataBlock);
+        RHXDataBlock* dataBlock = new RHXDataBlock(type, numDataStreams);
+        dataBlock->fillFromUsbBuffer(usbBuffer, i);
+        dataQueue.push_back(dataBlock);
     }
-    delete dataBlock;
 
     return true;
 }
 
 // Writes the contents of a data block queue (dataQueue) to a binary output stream (saveOut).
 // Returns the number of data blocks written.
-int Rhd2000EvalBoard::queueToFile(std::queue<Rhd2000DataBlock> &dataQueue, std::ofstream &saveOut)
+int Rhd2000EvalBoard::queueToFile(std::queue<RHXDataBlock> &dataQueue, std::ofstream &saveOut)
 {
     int count = 0;
 
@@ -1718,6 +1753,12 @@ void Rhd2000EvalBoard::getCableDelay(std::vector<int> &delays) const
     for (int i = 0; i < 4; ++i) {
         delays[i] = cableDelay[i];
     }
+}
+
+void Rhd2000EvalBoard::forceAllDataStreamsOff()
+{
+    dev->SetWireInValue(WireInDataStreamEn, 0x00000000);
+    dev->UpdateWireIns();
 }
 
 // Uses the Opal Kelly library to reset the FPGA

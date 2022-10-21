@@ -38,15 +38,13 @@
 #include <string>
 #include <fstream>
 
-
 #include "../rhx-api/Hardware/rhxglobals.h"
-
 
 namespace OpalKellyLegacy
 {
     class okCFrontPanel;
 }
-class Rhd2000DataBlock;
+
 class RHXDataBlock;
 
 class Rhd2000EvalBoard
@@ -101,7 +99,7 @@ public:
         PortH
     };
 
-    void uploadCommandList(const std::vector<int> &commandList, AuxCmdSlot auxCommandSlot, int bank);
+    void uploadCommandList(const std::vector<unsigned int> &commandList, AuxCmdSlot auxCommandSlot, int bank);
     void printCommandList(const std::vector<int> &commandList) const;
     void selectAuxCommandBank(BoardPort port, AuxCmdSlot auxCommandSlot, int bank);
     void selectAuxCommandLength(AuxCmdSlot auxCommandSlot, int loopIndex, int endIndex);
@@ -146,7 +144,7 @@ public:
     int getNumEnabledDataStreams() const;
 
     void clearTtlOut();
-    void setTtlOut(int ttlOutArray[]);
+    void setTtlOut(const int* ttlOutArray);
     void getTtlIn(int ttlInArray[]);
 
     void setDacManual(int value);
@@ -168,12 +166,14 @@ public:
     void setTtlMode(int mode);
 
     void flush();
-    bool readDataBlock(RHXDataBlock*dataBlock);
-    bool readDataBlocks(int numBlocks, std::queue<Rhd2000DataBlock> &dataqueue);
-    int queueToFile(std::queue<Rhd2000DataBlock> &dataqueue, std::ofstream &saveOut);
+    bool readDataBlock(RHXDataBlock* dataBlock);
+    bool readDataBlocks(int numBlocks, std::deque<RHXDataBlock*> &dataqueue);
+    int queueToFile(std::queue<RHXDataBlock> &dataqueue, std::ofstream &saveOut);
     int getBoardMode() const;
     int getCableDelay(BoardPort port) const;
     void getCableDelay(std::vector<int> &delays) const;
+
+    void forceAllDataStreamsOff();
 
     //Additions by open-ephys
     void resetFpga();
@@ -182,8 +182,11 @@ public:
     void setClockDivider(int divide_factor);
     bool isUSB3();
     void printFIFOmetrics();
-    bool readRawDataBlock(unsigned char** bufferPtr, int nSamples = -1);
+    long readDataBlocksRaw(int numBlocks, uint8_t* buffer);
+    bool readRawDataBlock(unsigned char** bufferPtr, int nSamples);
 
+    bool isDcmProgDone() const;
+    bool isDataClockLocked() const;
 
 private:
     OpalKellyLegacy::okCFrontPanel *dev;
@@ -254,9 +257,7 @@ private:
     std::string opalKellyModelName(int model) const;
     double getSystemClockFreq() const;
 
-    bool isDcmProgDone() const;
-    bool isDataClockLocked() const;
-
+    
     ControllerType type;
 
     bool usb3; //Open-Ephys addition for USB3 support

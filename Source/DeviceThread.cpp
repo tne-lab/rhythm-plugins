@@ -246,6 +246,8 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
             dacChannels[k] = 0;
             dacThresholds[k] = 0;
         }
+
+        usbThread = new USBThread(device.get());
     }
     
 }
@@ -480,9 +482,9 @@ void DeviceThread::updateSettings(OwnedArray<ContinuousChannel>* continuousChann
 
     DataStream::Settings dataStreamSettings
     {
-        "Device Data",
-        "description",
-        "identifier",
+        "Rhythm_Data",
+        "Continuous and event data from a device running Rhythm FPGA firmware",
+        "rhythm-fpga-device.data",
 
         static_cast<float>(device->getSampleRate())
 
@@ -1001,18 +1003,20 @@ bool DeviceThread::startAcquisition()
 
     dataBlock.reset();
 
+    LOGD("Num streams: ", device->getNumEnabledDataStreams());
+
     dataBlock = std::make_unique<RHXDataBlock>(device->getType(), device->getNumEnabledDataStreams());
 
-    // TODO: Fix this
-    blockSize = calculateDataBlockSizeInWords(device->getNumEnabledDataStreams(), usbVersion == USB3, 1);
-
-    LOGD("Starting usb thread with buffer of ", blockSize * 2, " bytes");
-    usbThread->startAcquisition(blockSize * 2);
-
+    blockSize = dataBlock->dataBlockSizeInWords();
+        
     int ledArray[8] = { 1, 1, 0, 0, 0, 0, 0, 0 };
     device->setLedDisplay(ledArray);
 
     device->flush();
+
+    LOGD("Starting usb thread with buffer of ", blockSize * 2, " bytes");
+    //usbThread->startAcquisition(blockSize * 2);
+
     device->setContinuousRunMode(true);
     device->run();
     
@@ -1081,21 +1085,22 @@ bool DeviceThread::stopAcquisition()
 bool DeviceThread::updateBuffer()
 {
             
-    unsigned char* bufferPtr;
+    uint8_t* bufferPtr;
     double ts;
 
     if (usbVersion == USB3 || device->getNumWordsInFifo() >= blockSize)
     {
 
-        if (usbThread->usbRead(bufferPtr) == 0)
-            return true;
+        //if (usbThread->usbRead(bufferPtr) == 0)
+       //     return true;
+
+        bool return_code = device->readRawDataBlock(&bufferPtr);
 
         int index = 0;
         int auxIndex, chanIndex;
         int numStreams = enabledStreams.size();
         int nSamps = dataBlock->samplesPerDataBlock();
 
-        //evalBoard->printFIFOmetrics();
         for (int samp = 0; samp < nSamps; samp++)
         {
             int channel = -1;
