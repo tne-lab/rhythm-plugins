@@ -313,12 +313,6 @@ public:
     */
     void uploadCommandList(const std::vector<unsigned int>& commandList, AuxCmdSlot auxCommandSlot, int bank = 0) override;
 
-    /** Scan all SPI ports to find all connected RHD/RHS amplifier chips. */
-    int findConnectedChips(std::vector<ChipType>& chipType, 
-                           std::vector<int>& portIndex, 
-                           std::vector<int>& commandStream,
-                           std::vector<int>& numChannelsOnPort) override;
-
 private:
 
     /** Disable copy operator (declaration only) */

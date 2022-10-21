@@ -210,8 +210,8 @@ public:
     virtual void programStimReg(int stream, int channel, StimRegister reg, int value) = 0;
     virtual void uploadCommandList(const std::vector<unsigned int> &commandList, AuxCmdSlot auxCommandSlot, int bank) = 0;
 
-    virtual int findConnectedChips(std::vector<ChipType> &chipType, std::vector<int> &portIndex, std::vector<int> &commandStream,
-                                   std::vector<int> &numChannelsOnPort) = 0;
+    int findConnectedChips(std::vector<ChipType> &chipType, std::vector<int> &portIndex, std::vector<int> &commandStream,
+                                   std::vector<int> &numChannelsOnPort);
 
 protected:
     ControllerType type;

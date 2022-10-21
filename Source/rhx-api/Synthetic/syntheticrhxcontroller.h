@@ -110,9 +110,6 @@ public:
     void programStimReg(int, int, StimRegister, int) override {}
     void uploadCommandList(const std::vector<unsigned int>&, AuxCmdSlot, int) override {}
 
-    int findConnectedChips(std::vector<ChipType> &chipType, std::vector<int> &portIndex, std::vector<int> &commandStream,
-        std::vector<int> &numChannelsOnPort) override;
-
 private:
     unsigned int numWordsInFifo() override;
     bool isDcmProgDone() const override { return true; }

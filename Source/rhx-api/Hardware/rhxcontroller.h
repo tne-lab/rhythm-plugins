@@ -113,9 +113,6 @@ public:
     void programStimReg(int stream, int channel, StimRegister reg, int value) override;
     void uploadCommandList(const std::vector<unsigned int> &commandList, AuxCmdSlot auxCommandSlot, int bank = 0) override;
 
-    int findConnectedChips(std::vector<ChipType> &chipType, std::vector<int> &portIndex, std::vector<int> &commandStream,
-        std::vector<int> &numChannelsOnPort) override;
-
     // Physical board only
     static void resetBoard(okCFrontPanel* dev_);
     static int getBoardMode(okCFrontPanel* dev_);
