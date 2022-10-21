@@ -279,12 +279,14 @@ void RhythmDevice::enableDataStream(int stream, bool enabled)
         return;
     }
 
-
     if (enabled) {
         if (dataStreamEnabled[stream] == 0) {
             evalBoard->enableDataStream(stream, enabled);
             dataStreamEnabled[stream] = 1;
             numDataStreams++;
+        }
+        else {
+            std::cout << "Data stream " << stream << " already enabled. " << std::endl;
         }
     }
     else {
@@ -293,8 +295,21 @@ void RhythmDevice::enableDataStream(int stream, bool enabled)
             dataStreamEnabled[stream] = 0;
             numDataStreams--;
         }
+        else {
+            std::cout << "Data stream " << stream << " already disabled. " << std::endl;
+        }
     }
+
+    for (int i = 0; i < dataStreamEnabled.size(); i++)
+        std::cout << dataStreamEnabled[i] << " ";
+
+    std::cout << std::endl;
    
+}
+
+void RhythmDevice::setDataSource(int stream, BoardDataSource source)
+{
+    evalBoard->setDataSource(stream, Rhd2000EvalBoard::BoardDataSource(source));
 }
 
 
@@ -441,11 +456,15 @@ int RhythmDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vecto
     BoardDataSource initStreamDdrPorts[8] = { PortA1Ddr, PortA2Ddr, PortB1Ddr, PortB2Ddr,
                                               PortC1Ddr, PortC2Ddr, PortD1Ddr, PortD2Ddr };
 
-    for (int i = 0; i < maxMISOLines; i++)
-        evalBoard->setDataSource(i, Rhd2000EvalBoard::BoardDataSource(initStreamPorts[i]));
+    
+    for (int i = 0; i < maxNumDataStreams(); i++)
+        enableDataStream(i, false);
 
     for (int i = 0; i < maxMISOLines; i++)
-        evalBoard->enableDataStream(i, true);
+        enableDataStream(i, true);
+    
+    for (int i = 0; i < maxMISOLines; i++)
+        setDataSource(i, initStreamPorts[i]);
 
     // Run the SPI interface for multiple command sequences (i.e., NRepeats data blocks).
     const int NRepeats = 1;
@@ -594,10 +613,10 @@ int RhythmDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vecto
 
     // Reconfigure USB data streams in consecutive order to accommodate all connected chips.
 
-    std::cout << "Reconfigure USB streams" << std::endl;
+    std::cout << "Disable USB streams" << std::endl;
 
     for (int i = 0; i < maxMISOLines; i++)
-        evalBoard->enableDataStream(i, false);
+        enableDataStream(i, false);
 
     if (type == ControllerOEOpalKellyUSB2) {
         int stream = 0;
@@ -605,15 +624,15 @@ int RhythmDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vecto
             if ((chipTypeOld[oldStream] == RHD2216Chip) && (stream < maxNumStreams)) {
                 chipType[stream] = RHD2216Chip;
                 portIndex[stream] = portIndexOld[oldStream];
-                enableDataStream(stream, true);
-                setDataSource(stream, initStreamPorts[oldStream]);
+              //  enableDataStream(stream, true);
+              //  setDataSource(stream, initStreamPorts[oldStream]);
                 stream++;
             }
             else if ((chipTypeOld[oldStream] == RHD2132Chip) && (stream < maxNumStreams)) {
                 chipType[stream] = RHD2132Chip;
                 portIndex[stream] = portIndexOld[oldStream];
-                enableDataStream(stream, true);
-                setDataSource(stream, initStreamPorts[oldStream]);
+              ///  enableDataStream(stream, true);
+              //  setDataSource(stream, initStreamPorts[oldStream]);
                 stream++;
             }
             else if ((chipTypeOld[oldStream] == RHD2164Chip) && (stream < maxNumStreams - 1)) {
@@ -621,10 +640,10 @@ int RhythmDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vecto
                 chipType[stream + 1] = RHD2164MISOBChip;
                 portIndex[stream] = portIndexOld[oldStream];
                 portIndex[stream + 1] = portIndexOld[oldStream];
-                enableDataStream(stream, true);
-                enableDataStream(stream + 1, true);
-                setDataSource(stream, initStreamPorts[oldStream]);
-                setDataSource(stream + 1, initStreamDdrPorts[oldStream]);
+               // enableDataStream(stream, true);
+               // enableDataStream(stream + 1, true);
+               // setDataSource(stream, initStreamPorts[oldStream]);
+               // setDataSource(stream + 1, initStreamDdrPorts[oldStream]);
                 stream += 2;
             }
         }
@@ -635,16 +654,16 @@ int RhythmDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vecto
             if ((chipTypeOld[oldStream] == RHD2216Chip) && (stream < maxNumStreams)) {
                 chipType[stream] = RHD2216Chip;
                 portIndex[stream] = portIndexOld[oldStream];
-                enableDataStream(2 * oldStream, true);
-                enableDataStream(2 * oldStream + 1, false);
+                //enableDataStream(2 * oldStream, true);
+                //enableDataStream(2 * oldStream + 1, false);
                 commandStream[stream] = 2 * oldStream;
                 stream++;
             }
             else if ((chipTypeOld[oldStream] == RHD2132Chip) && (stream < maxNumStreams)) {
                 chipType[stream] = RHD2132Chip;
                 portIndex[stream] = portIndexOld[oldStream];
-                enableDataStream(2 * oldStream, true);
-                enableDataStream(2 * oldStream + 1, false);
+                //enableDataStream(2 * oldStream, true);
+               // enableDataStream(2 * oldStream + 1, false);
                 commandStream[stream] = 2 * oldStream;
                 stream++;
             }
@@ -653,8 +672,8 @@ int RhythmDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vecto
                 chipType[stream + 1] = RHD2164MISOBChip;
                 portIndex[stream] = portIndexOld[oldStream];
                 portIndex[stream + 1] = portIndexOld[oldStream];
-                enableDataStream(2 * oldStream, true);
-                enableDataStream(2 * oldStream + 1, true);
+               // enableDataStream(2 * oldStream, true);
+               // enableDataStream(2 * oldStream + 1, true);
                 commandStream[stream] = 2 * oldStream;
                 commandStream[stream + 1] = 2 * oldStream + 1;
                 stream += 2;
@@ -662,7 +681,7 @@ int RhythmDevice::findConnectedChips(std::vector<ChipType>& chipType, std::vecto
         }
     }
 
-    std::cout << "Done reconfiguring USB streams" << std::endl;
+    //std::cout << "Done reconfiguring USB streams" << std::endl;
 
     return returnValue;
 }

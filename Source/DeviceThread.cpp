@@ -453,6 +453,14 @@ void DeviceThread::scanPorts()
         }
         
     }
+
+    std::cout << "Enabling streams" << std::endl;
+    for (int i = 0; i < enabledStreams.size(); i++)
+    {
+        std::cout << i << " " << enabledStreams[i] << std::endl;
+        device->enableDataStream(i, true);
+        device->setDataSource(i, BoardDataSource(enabledStreams[i]));
+    }
 }
 
 
