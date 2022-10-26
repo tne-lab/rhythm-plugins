@@ -289,9 +289,23 @@ std::unique_ptr<GenericEditor> DeviceThread::createEditor(SourceNode* sn)
 
 void DeviceThread::handleBroadcastMessage(String msg)
 {
-    StringArray parts = StringArray::fromTokens(msg, " ", "");
+    // Broadcast messages allow other plugins (or remote processes)
+    // to interact with this plugin while acquisition is active.
+    //
+    // Available commands:
+    // -------------------
+    //
+    // Trigger outputs of the Open Ephys Acquisition Board
+    //   ACQBOARD TRIGGER 0 100   <-- triggers ~100 ms pulse on line 0
+    //
+    // Configure the stimulus trigger for an RHS Controller
+    //   RHS STIM_TRIGGER 1 10 3  <-- set stream 1, channel 10 to trigger on digital input line 3
+    //
+    // Configure the stimulus shape for an RHS Controller
+    //   RHS STIM_SHAPE 1 10 1 BIPHASIC   <--- set stream 1, channel 10 to deliver 1 biphasic pulse
+    //
 
-    //std::cout << "Received " << msg << std::endl;
+    StringArray parts = StringArray::fromTokens(msg, " ", "");
 
     if (parts[0].equalsIgnoreCase("ACQBOARD"))
     {
@@ -326,6 +340,70 @@ void DeviceThread::handleBroadcastMessage(String msg)
                 }
             }
         }
+    }
+    else if (parts[0].equalsIgnoreCase("RHS") && boardType == RHS_STIM_RECORDING_CONTROLLER)
+    {
+        if (parts.size() > 1)
+        {
+            String command = parts[1];
+
+            if (command.equalsIgnoreCase("STIM_TRIGGER"))
+            {
+                if (parts.size() == 5)
+                {
+                    int stream = parts[2].getIntValue();
+                    int channel = parts[3].getIntValue();
+                    int trigger_line = parts[4].getIntValue();
+
+                    if (stream < 0 || stream > enabledStreams.size() - 1)
+                        return;
+
+                    if (channel < 0 || channel > 15)
+                        return;
+
+                    if (trigger_line < 0 || trigger_line > 7)
+                        return;
+
+                    device->configureStimTrigger(stream, channel, trigger_line, true, true, false);
+                }
+            }
+            else if (command.equalsIgnoreCase("STIM_SHAPE"))
+            {
+                if (parts.size() == 6)
+                {
+                    int stream = parts[2].getIntValue();
+                    int channel = parts[3].getIntValue();
+                    int num_pulses = parts[4].getIntValue();
+
+                    String shapeCommand = parts[5];
+                    StimShape shape;
+
+                    if (shapeCommand.equalsIgnoreCase("BIPHASIC"))
+                        shape = Biphasic;
+                    else if (shapeCommand.equalsIgnoreCase("BIPHASIC_WITH_DELAY"))
+                        shape = BiphasicWithInterphaseDelay;
+                    else if (shapeCommand.equalsIgnoreCase("TRIPHASIC"))
+                        shape = Triphasic;
+                    else if (shapeCommand.equalsIgnoreCase("MONOPHASIC"))
+                        shape = Monophasic;
+                    else
+                        return;
+
+                    if (stream < 0 || stream > enabledStreams.size() - 1)
+                        return;
+
+                    if (channel < 0 || channel > 15)
+                        return;
+
+                    if (num_pulses < 0 || num_pulses > 10)
+                        return;
+
+                    device->configureStimPulses(stream, channel, num_pulses, shape, true);
+                }
+            }
+
+        }
+
     }
 
 }
