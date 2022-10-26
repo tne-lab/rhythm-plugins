@@ -593,71 +593,7 @@ void RHXDataBlock::write(std::ofstream& saveOut, int numDataStreams) const
 void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
 {
 
-    int index = blockIndex * BytesPerWord * dataBlockSizeInWords();
     int ampIndex = 0;
-    int adcIndex = 0;
-
-    //std::cout << "Num samples: " << samplesPerDataBlock() << std::endl;
-    //std::cout << "Num aux channels: " << numAuxChannels() << std::endl;
-
-    for (int t = 0; t < samplesPerDataBlock(); ++t)
-    {
-
-        //std::cout << "Sample number: " << t << std::endl;
-
-        if (!checkUsbHeader(usbBuffer, index)) {
-            std::cerr << "Error in RHXDataBlock::fillFromUsbBuffer: Incorrect header." << std::endl;
-            break;
-        }
-
-        //else cerr << "Block ok" << std::endl;
-        index += 8; // magic number header width (bytes)
-        timeStampInternal[t] = convertUsbTimeStamp(usbBuffer, index);
-
-       // std::cout << "Timestamp: " << timeStampInternal[t] << std::endl;
-
-        index += 4; // timestamp width
-
-        // Read auxiliary results
-        for (int channel = 0; channel < 3; ++channel) {
-            //std::cout << "Aux channel " << channel << std::endl;
-
-            for (int stream = 0; stream < numDataStreams; ++stream) {
-                //std::cout << " Aux stream " << stream << " value: ";
-                int word = convertUsbWord(usbBuffer, index);
-                auxiliaryDataInternal[t * numDataStreams * numAuxChannels() + channel * numDataStreams + stream] = 
-                    word;
-                //std::cout << word << std::endl;
-                index += 2;
-            }
-        }
-
-        // Read amplifier channels
-        for (int channel = 0; channel < 32; ++channel) {
-            for (int stream = 0; stream < numDataStreams; ++stream) {
-                amplifierDataInternal[ampIndex++] = convertUsbWord(usbBuffer, index);
-                index += 2;
-            }
-        }
-
-        // skip 36th filler word in each data stream
-        index += 2 * numDataStreams;
-
-        // Read from AD5662 ADCs
-        for (int i = 0; i < 8; ++i) {
-            boardAdcDataInternal[adcIndex] = convertUsbWord(usbBuffer, index);
-            index += 2;
-        }
-
-        // Read TTL input and output values
-        ttlInInternal[t] = convertUsbWord(usbBuffer, index);
-        index += 2;
-
-        ttlOutInternal[t] = convertUsbWord(usbBuffer, index);
-        index += 2;
-    }
-
-    /*int ampIndex = 0;
     int dcAmpIndex = 0;
     int complianceIndex = 0;
     int stimOnIndex = 0;
@@ -786,5 +722,5 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
 
         ttlOutInternal[t] = convertUsbWord(usbBuffer, index);
         index += 2;
-    }*/
+    }
 }

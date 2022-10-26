@@ -1147,6 +1147,7 @@ bool DeviceThread::updateBuffer()
             }
             index += 64 * numStreams; // neural data width
             auxIndex += 2 * numStreams; // skip AuxCmd1 slots (see updateRegisters())
+
             // copy the 3 aux channels
             if (settings.acquireAux)
             {
@@ -1172,7 +1173,54 @@ bool DeviceThread::updateBuffer()
                     auxIndex += 2; // single chan width (2 bytes)
                 }
             }
-            index += 2 * numStreams; // skip over filler word at the end of each data stream
+
+            if (boardType == RHS_STIM_RECORDING_CONTROLLER)
+            {
+                // Read auxiliary command 0 results (see above for auxiliary command 1-3 results).
+                for (int stream = 0; stream < numStreams; ++stream) {
+                    //auxiliaryDataInternal[index1 + stream] = convertUsbWord(usbBuffer, index);
+                    index += 2;
+                    index += 2; // We are skipping the top 16 bits here since they will typically be either all 1's (results of a WRITE command)
+                                // or all 0's (results of a READ command).
+                }
+
+                // Read stimulation control parameters.
+                for (int stream = 0; stream < numStreams; ++stream) {
+                    //stimOnInternal[stimOnIndex++] = convertUsbWord(usbBuffer, index);
+                    index += 2;
+                }
+
+                for (int stream = 0; stream < numStreams; ++stream) {
+                    //stimPolInternal[stimPolIndex++] = convertUsbWord(usbBuffer, index);
+                    index += 2;
+                }
+
+                for (int stream = 0; stream < numStreams; ++stream) {
+                    //ampSettleInternal[ampSettleIndex++] = convertUsbWord(usbBuffer, index);
+                    index += 2;
+                }
+
+                for (int stream = 0; stream < numStreams; ++stream) {
+                    //chargeRecovInternal[chargeRecovIndex++] = convertUsbWord(usbBuffer, index);
+                    index += 2;
+                }
+
+                // Read from DACs.
+                for (int i = 0; i < 8; ++i) {
+                    //boardDacDataInternal[dacIndex++] = convertUsbWord(usbBuffer, index);
+                    index += 2;
+                }
+            }
+
+            // Skip filler words in each data stream.
+            if (boardType != RHD_RECORDING_CONTROLLER) {
+                index += 2 * numStreams;
+            }
+            else
+            {
+                index += 2 * (numStreams % 4);
+            }
+
             // copy the 8 ADC channels
             if (settings.acquireAdc)
             {
@@ -1201,7 +1249,7 @@ bool DeviceThread::updateBuffer()
 
             uint64 ttlEventWord = *(uint64*)(bufferPtr + index) & 65535;
 
-            index += 4;
+            index += 4; // skip to end of buffer
 
             sourceBuffers[0]->addToBuffer(thisSample,
                 &timestamp,
