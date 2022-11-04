@@ -50,8 +50,9 @@ void USBThread::startAcquisition(int nBytes)
 		m_buffers[i].malloc(nBytes);
 	}
 	
-	m_curBuffer = 0;
+	m_currentBuffer = 0;
 	m_readBuffer = 0;
+	m_currentFrame = 0;
 	m_canRead = true;
 
 	startThread();
@@ -75,24 +76,39 @@ long USBThread::usbRead(uint8_t*& buffer)
 {
 	const ScopedLock lock(m_lock);
 
-	if (m_readBuffer == m_curBuffer)
+	if (m_readBuffer == m_currentBuffer)
 		return 0;
 
-	if (useOniFrame)
-		buffer = ((uint8_t*) oni_buffers[m_readBuffer]->data) + 8; // skip ONI timestamps
-	else
-		buffer = m_buffers[m_readBuffer].getData();
+	buffer = m_buffers[m_readBuffer].getData();
 
 	long read = m_lastRead[m_readBuffer];
 	m_readBuffer = ++m_readBuffer % 2;
 	m_canRead = true;
 
-	if (useOniFrame)
-		oni_destroy_frame(oni_buffers[m_readBuffer]);
-
 	notify();
 
 	return read;
+}
+
+long USBThread::getOniFrames(oni_frame_t** frames)
+{
+	const ScopedLock lock(m_lock);
+
+	if (m_readBuffer == m_currentBuffer)
+		return 0;
+
+	frames = &oni_buffers[m_readBuffer * ONI_BUFFER_SAMPLES];
+
+	m_currentFrame -= ONI_BUFFER_SAMPLES;
+
+	for (int i = 0; i < ONI_BUFFER_SAMPLES; i++)
+		oni_destroy_frame(oni_buffers[m_currentFrame++]);
+
+	m_currentFrame %= (ONI_BUFFER_SAMPLES * 2);
+
+	m_readBuffer = ++m_readBuffer % 2;
+	m_canRead = true;
+
 }
 
 void USBThread::run()
@@ -104,7 +120,9 @@ void USBThread::run()
 		if (m_canRead)
 		{
 			m_lock.exit();
+			
 			long read;
+			
 			do
 			{
 
@@ -112,18 +130,19 @@ void USBThread::run()
 					break;
 
 				if (!useOniFrame)
-					read = m_board->readDataBlocksRaw(1, m_buffers[m_curBuffer].getData());
+					read = m_board->readDataBlocksRaw(1, m_buffers[m_currentBuffer].getData());
 				else
 				{
-					read = m_oni_device->readFrame(&oni_buffers[m_curBuffer]);
+					for (int i = 0; i < ONI_BUFFER_SAMPLES; i++)
+						read = m_oni_device->readFrame(&oni_buffers[m_currentFrame++]);
 				}
 					
 
 			} while (read <= 0);
 			{
 				const ScopedLock lock(m_lock);
-				m_lastRead[m_curBuffer] = read;
-				m_curBuffer = ++m_curBuffer % 2;
+				m_lastRead[m_currentBuffer] = read;
+				m_currentBuffer = ++m_currentBuffer % 2;
 				m_canRead = false;
 			}
 		}

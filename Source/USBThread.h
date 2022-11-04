@@ -31,6 +31,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 class AbstractRHXController;
 class OniDevice;
 
+#define ONI_BUFFER_SAMPLES 256
+
 namespace RhythmNode
 {
 	/** 
@@ -59,6 +61,9 @@ namespace RhythmNode
 
 		/** Reads data into an unsigned char buffer */
 		long usbRead(uint8_t* & buffer);
+
+		/** Sets a pointer to ONI frames*/
+		long getOniFrames(oni_frame_t** frames);
 	
 	private:
 		
@@ -66,12 +71,13 @@ namespace RhythmNode
 		OniDevice* m_oni_device;
 		
 		HeapBlock<unsigned char> m_buffers[2];
-		oni_frame_t* oni_buffers[2];
+		oni_frame_t* oni_buffers[ONI_BUFFER_SAMPLES * 2];
 		
 		long m_lastRead[2];
 		
-		unsigned short m_curBuffer{ 0 };
+		unsigned short m_currentBuffer{ 0 };
 		unsigned short m_readBuffer{ 0 };
+		unsigned short m_currentFrame{ 0 };
 		bool m_canRead{ false };
 		
 		CriticalSection m_lock;

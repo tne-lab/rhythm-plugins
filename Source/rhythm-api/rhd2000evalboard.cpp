@@ -1526,7 +1526,7 @@ long Rhd2000EvalBoard::readDataBlocksRaw(int numBlocks, uint8_t* buffer)
     //std::cout << "numBlocks: " << numBlocks << std::endl;
     //std::cout << "numDataStreams: " << numDataStreams << std::endl;
    // std::cout << "BytesPerWord: " << BytesPerWord << std::endl;
-   // std::cout << "numBytesToRead: " << numBytesToRead << std::endl;
+    //std::cout << "numBytesToRead: " << numBytesToRead << std::endl;
 
     //std::cout << "Requesting " << numBytesToRead << " bytes." << std::endl;
 

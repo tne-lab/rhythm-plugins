@@ -370,6 +370,8 @@ namespace RhythmNode
 
 		unsigned int blockSize;
 
+		//uint8_t bufferPtr[500000];
+
 		/** Data buffers*/
 		float thisSample[MAX_NUM_CHANNELS];
 

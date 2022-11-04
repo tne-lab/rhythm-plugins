@@ -514,28 +514,37 @@ void DeviceThread::scanPorts()
         headstage->setNumStreams(0); // reset stream count
     }
 
+    chipId.clear();
+
     for (int i = 0; i < chipType.size(); i++)
     {
-        //LOGC(int(chipType[i]), " ", portIndex[i], " ", commandStream[i]);
+        LOGC(int(chipType[i]), " ", portIndex[i], " ", commandStream[i]);
+
+        chipId.add(chipType[i]);
 
         if (commandStream[i] > -1)
         {
             if (chipType[i] == CHIP_ID_RHD2164)
             {
                 enableHeadstage(commandStream[i] / 2, true, 2, 32);
+                std::cout << "RHD2164" << std::endl;
             }
             else if (chipType[i] != CHIP_ID_RHD2164_B) 
             {
                 enableHeadstage(commandStream[i] / 2, true, 1, 32);
+                std::cout << "RHD2164_B" << std::endl;
             }
         }
         
     }
 
-    std::cout << "Enabling streams" << std::endl;
+    std::cout << "Chip IDs: " << std::endl;
+    for (int i = 0; i < chipId.size(); i++)
+        std::cout << chipId[i] << std::endl;
+
     for (int i = 0; i < enabledStreams.size(); i++)
     {
-        std::cout << i << " " << enabledStreams[i] << std::endl;
+        std::cout << "Enabling stream " << i << " with source " << enabledStreams[i] << std::endl;
         device->enableDataStream(i, true);
         device->setDataSource(i, BoardDataSource(enabledStreams[i]));
     }
@@ -594,8 +603,8 @@ void DeviceThread::updateSettings(OwnedArray<ContinuousChannel>* continuousChann
                 ContinuousChannel::Settings channelSettings{
                     ContinuousChannel::ELECTRODE,
                     headstage->getChannelName(ch),
-                    "description",
-                    "identifier",
+                    "Headstage channel from a Rhythm FPGA device",
+                    "rhythm-fpga-device.continuous.headstage",
 
                     0.195,
 
@@ -621,8 +630,8 @@ void DeviceThread::updateSettings(OwnedArray<ContinuousChannel>* continuousChann
                     ContinuousChannel::Settings channelSettings{
                         ContinuousChannel::AUX,
                         headstage->getStreamPrefix() + "_AUX" + String(ch + 1),
-                        "description",
-                        "identifier",
+                        "Aux input channel from a Rhythm FPGA device",
+                        "rhythm-fpga-device.continuous.aux",
 
                         0.0000374,
 
@@ -647,8 +656,8 @@ void DeviceThread::updateSettings(OwnedArray<ContinuousChannel>* continuousChann
             ContinuousChannel::Settings channelSettings{
                 ContinuousChannel::ADC,
                 name,
-                "description",
-                "identifier",
+                "ADC input channel from a Rhythm FPGA device",
+                "rhythm-fpga-device.continuous.adc",
 
                 getAdcBitVolts(ch),
 
@@ -663,9 +672,9 @@ void DeviceThread::updateSettings(OwnedArray<ContinuousChannel>* continuousChann
 
     EventChannel::Settings settings{
             EventChannel::Type::TTL,
-            "name",
-            "description",
-            "identifier",
+            "Rhythm FPGA TTL Input",
+            "Events on digital input lines of a Rhythm FPGA device",
+            "rhythm-fpga-device.events",
             stream,
             8
     };
@@ -1172,16 +1181,24 @@ bool DeviceThread::updateBuffer()
 {
             
     uint8_t* bufferPtr;
+    oni_frame_t** frames;
     double ts;
 
     if (usbVersion == USB3 || device->getNumWordsInFifo() >= blockSize)
     {
-
-        if (usbThread->usbRead(bufferPtr) == 0)
+        
+        if (boardType == ONI_USB)
         {
-            return true;
+            if (usbThread->getOniFrames(frames) == 0)
+                return true;
         }
-            
+        else {
+            if (usbThread->usbRead(bufferPtr) == 0)
+            {
+                return true;
+            }
+        }
+        
         int index = 0;
         int auxIndex, chanIndex;
         int numStreams = enabledStreams.size();
@@ -1191,6 +1208,12 @@ bool DeviceThread::updateBuffer()
         {
             int channel = -1;
 
+            if (boardType == ONI_USB)
+            {
+                oni_frame_t* currentFrame = *frames + samp;
+                bufferPtr = ((uint8_t*)currentFrame->data) + 8;
+            }
+                
             if (!dataBlock->checkUsbHeader(bufferPtr, index))
             {
                 LOGE("Error in rhxcontroller::readDataBlock: Incorrect header.");
@@ -1223,6 +1246,10 @@ bool DeviceThread::updateBuffer()
                 }
 
             }
+
+           // if (samp == 0)
+            //        std::cout << index << std::endl;
+
             index += 64 * numStreams; // neural data width
             auxIndex += 2 * numStreams; // skip AuxCmd1 slots (see updateRegisters())
 
@@ -1251,6 +1278,9 @@ bool DeviceThread::updateBuffer()
                     auxIndex += 2; // single chan width (2 bytes)
                 }
             }
+
+            //if (samp == 0)
+            //    std::cout << index << std::endl;
 
             if (boardType == RHS_STIM_RECORDING_CONTROLLER)
             {
@@ -1325,6 +1355,8 @@ bool DeviceThread::updateBuffer()
                 index += 16; // skip ADC chans (8 * 2 bytes)
             }
 
+
+
             uint64 ttlEventWord = *(uint64*)(bufferPtr + index) & 65535;
 
             index += 4; // skip to end of buffer
@@ -1334,6 +1366,9 @@ bool DeviceThread::updateBuffer()
                 &ts,
                 &ttlEventWord,
                 1);
+
+            //if (samp == 0)
+             //   std::cout << index << std::endl;
         }
 
     }
