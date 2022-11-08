@@ -1845,7 +1845,7 @@ bool DeviceThread::updateBuffer()
                             0.00030517578 * float(*(uint16*)(bufferPtr + index)); // shouldn't this be half the value, not 2x?
                     }
                     else if (boardType == INTAN_RHD_USB) {
-                        thisSample[channel] = 0.000050354 * float(dataBlock->boardAdcData[adcChan][samp]);
+                        thisSample[channel] = 0.000050354 * float(*(uint16*)(bufferPtr + index));
                     }
                     index += 2; // single chan width (2 bytes)
                 }
