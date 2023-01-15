@@ -121,6 +121,9 @@ namespace RhythmNode
         /** Informs the DataThread about whether to expect saved settings to be loaded*/
         void initialize(bool signalChainIsLoading) override;
 
+		/** Informs the DataThread about whether to expect saved settings to be loaded*/
+		void updateChipCommandLists(bool updateStimParams);
+
 		/* Passes the processor's info objects to DataThread, to allow them to be configured */
 		void updateSettings(OwnedArray<ContinuousChannel>* continuousChannels,
 			OwnedArray<EventChannel>* eventChannels,
@@ -365,6 +368,8 @@ namespace RhythmNode
 			bool newScan = true;
 			int numberingScheme = 1;
 			uint16 clockDivideFactor;
+
+			StimStepSize stimStepSize = StimStepSizeMin;
 
 		} settings;
 

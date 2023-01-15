@@ -231,6 +231,69 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
 
         device->initialize();
 
+        if (device->getType() == ControllerStimRecordUSB2) {
+            device->enableDcAmpConvert(true);
+            device->setExtraStates(0);
+        }
+        
+        device->setSampleRate(SampleRate30000Hz);
+
+        // Upload all SPI command sequences.
+        updateChipCommandLists(true);
+
+        if (device->getType() != ControllerStimRecordUSB2) {
+            // Select RAM Bank 0 for AuxCmd3 initially, so the ADC is calibrated.
+            device->selectAuxCommandBankAllPorts(RHXController::AuxCmd3, 0);
+        }
+
+        // Since our longest command sequence is N commands, we run the SPI interface for N samples.
+        device->setMaxTimeStep(RHXDataBlock::samplesPerDataBlock(device->getType()));
+        device->setContinuousRunMode(false);
+
+        // Start SPI interface.
+        device->run();
+
+        // Wait for the N-sample run to complete.
+        while (device->isRunning()) {
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+		}
+
+        // Read the resulting single data block from the USB interface.
+        RHXDataBlock dataBlock(device->getType(), device->getNumEnabledDataStreams());
+        device->readDataBlock(&dataBlock);
+
+        if (device->getType() != ControllerStimRecordUSB2) {
+            // Now that ADC calibration has been performed, we switch to the command sequence that does not execute
+            // ADC calibration.
+            device->selectAuxCommandBankAllPorts(RHXController::AuxCmd3, 
+                settings.fastSettleEnabled ? 2 : 1);
+        }
+
+        // Set default configuration for all eight DACs on controller.
+        int dacManualStream = (device->getType() == ControllerRecordUSB3) ? 32 : 8;
+        for (int i = 0; i < 8; i++) {
+            device->enableDac(i, false);
+            device->selectDacDataStream(i, dacManualStream); // Initially point DACs to DacManual1 input
+            device->selectDacDataChannel(i, 0);
+            setDACthreshold(i, 0);
+        }
+        device->setDacManual(32768);
+        device->setDacGain(0);
+        device->setAudioNoiseSuppress(0);
+
+        // Set default SPI cable delay values.
+        device->setCableDelay(PortA, 1);
+        device->setCableDelay(PortB, 1);
+        device->setCableDelay(PortC, 1);
+        device->setCableDelay(PortD, 1);
+        
+        if (device->getType() == ControllerRecordUSB3) {
+            device->setCableDelay(PortE, 1);
+            device->setCableDelay(PortF, 1);
+            device->setCableDelay(PortG, 1);
+            device->setCableDelay(PortH, 1);
+        }
+
         int maxNumHeadstages = (boardType == RHD_RECORDING_CONTROLLER) ? 16 : 8;
 
         for (int i = 0; i < maxNumHeadstages; i++)
@@ -277,6 +340,112 @@ void DeviceThread::initialize(bool signalChainIsLoading)
         adcChannelNames.add("ADC" + String(i + 1));
         ttlLineNames.add("TTL" + String(i + 1));
     }
+}
+
+
+// Create SPI command lists and upload to auxiliary command slots.
+void DeviceThread::updateChipCommandLists(bool updateStimParams)
+{
+    RHXRegisters chipRegisters(device->getType(), device->getSampleRate(), settings.stimStepSize);
+
+    chipRegisters.setDigOutLow(RHXRegisters::DigOut::DigOut1); // Take auxiliary output out of HiZ mode.
+    chipRegisters.setDigOutLow(RHXRegisters::DigOut::DigOut2); // Take auxiliary output out of HiZ mode.
+    chipRegisters.setDigOutLow(RHXRegisters::DigOut::DigOutOD); // Take auxiliary output out of HiZ mode.
+
+    std::vector<unsigned int> commandList;
+    int numCommands = RHXDataBlock::samplesPerDataBlock(device->getType());
+    int commandSequenceLength;
+
+    if (device->getType() == ControllerStimRecordUSB2) {
+        // Create a command list for the AuxCmd1 slot.  This command sequence programs most of the RAM registers
+        // on the RHS2116 chip.
+        commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, updateStimParams);
+        device->uploadCommandList(commandList, RHXController::AuxCmd1, 0); // RHS - bank doesn't matter
+        device->selectAuxCommandLength(RHXController::AuxCmd1, 0, commandSequenceLength - 1);
+
+        // Next, fill the other three command slots with dummy commands
+        chipRegisters.createCommandListDummy(commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 255));
+        device->uploadCommandList(commandList, RHXController::AuxCmd2, 0); // RHS - bank doesn't matter
+        chipRegisters.createCommandListDummy(commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 254));
+        device->uploadCommandList(commandList, RHXController::AuxCmd3, 0); // RHS - bank doesn't matter
+        chipRegisters.createCommandListDummy(commandList, 8192, chipRegisters.createRHXCommand(RHXRegisters::RHXCommandRegRead, 253));
+        device->uploadCommandList(commandList, RHXController::AuxCmd4, 0);
+    }
+    else {
+        // Create a command list for the AuxCmd1 slot.  This command sequence will continuously
+        // update Register 3, which controls the auxiliary digital output pin on each chip.
+        // This permits real-time control of the digital output pin on chips on each SPI port.
+        commandSequenceLength = chipRegisters.createCommandListRHDUpdateDigOut(commandList, numCommands);
+        device->uploadCommandList(commandList, RHXController::AuxCmd1, 0);
+        device->selectAuxCommandLength(RHXController::AuxCmd1, 0, commandSequenceLength - 1);
+        device->selectAuxCommandBankAllPorts(RHXController::AuxCmd1, 0);
+
+        // Next, we'll create a command list for the AuxCmd2 slot.  This command sequence
+        // will sample the temperature sensor and other auxiliary ADC inputs.
+        commandSequenceLength = chipRegisters.createCommandListRHDSampleAuxIns(commandList, numCommands);
+        device->uploadCommandList(commandList, RHXController::AuxCmd2, 0);
+        device->selectAuxCommandLength(RHXController::AuxCmd2, 0, commandSequenceLength - 1);
+        device->selectAuxCommandBankAllPorts(RHXController::AuxCmd2, 0);
+    }
+
+    // Set amplifier bandwidth parameters.
+    setDspCutoffFreq(settings.dsp.cutoffFreq);
+    setLowerBandwidth(settings.dsp.lowerBandwidth);
+    setUpperBandwidth(settings.dsp.upperBandwidth);
+    //enableDsp(true);
+    //state->actualDspCutoffFreq->setValueWithLimits(chipRegisters.setDspCutoffFreq(state->desiredDspCutoffFreq->getValue()));
+    //state->actualLowerBandwidth->setValueWithLimits(chipRegisters.setLowerBandwidth(state->desiredLowerBandwidth->getValue(), 0));
+    //state->actualLowerSettleBandwidth->setValueWithLimits(chipRegisters.setLowerBandwidth(state->desiredLowerSettleBandwidth->getValue(), 1));
+   // state->actualUpperBandwidth->setValueWithLimits(chipRegisters.setUpperBandwidth(state->desiredUpperBandwidth->getValue()));
+    //chipRegisters.enableDsp(state->dspEnabled->getValue());
+    //state->releaseUpdate();
+
+    if (device->getType() == ControllerStimRecordUSB2) {
+        commandSequenceLength = chipRegisters.createCommandListRHSRegisterConfig(commandList, updateStimParams);
+        // Upload version with no ADC calibration to AuxCmd1 RAM Bank.
+        device->uploadCommandList(commandList, RHXController::AuxCmd1, 0); // RHS - bank doesn't matter
+        device->selectAuxCommandLength(RHXController::AuxCmd1, 0, commandSequenceLength - 1);
+
+        // Run system once for changes to take effect.
+        device->setContinuousRunMode(false);
+        device->setMaxTimeStep(RHXDataBlock::samplesPerDataBlock(device->getType()));
+
+        // Start SPI interface.
+        device->run();
+
+        // Wait for the 128-sample run to complete.
+        while (device->isRunning()) {
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+
+        device->flush();
+    }
+    else {
+        // For the AuxCmd3 slot, we will create three command sequences.  All sequences
+        // will configure and read back the RHD2000 chip registers, but one sequence will
+        // also run ADC calibration.  Another sequence will enable amplifier 'fast settle'.
+
+        commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, true, numCommands);
+        // Upload version with ADC calibration to AuxCmd3 RAM Bank 0.
+        device->uploadCommandList(commandList, RHXController::AuxCmd3, 0);
+        device->selectAuxCommandLength(RHXController::AuxCmd3, 0, commandSequenceLength - 1);
+
+        commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, false, numCommands);
+        // Upload version with no ADC calibration to AuxCmd3 RAM Bank 1.
+        device->uploadCommandList(commandList, RHXController::AuxCmd3, 1);
+        device->selectAuxCommandLength(RHXController::AuxCmd3, 0, commandSequenceLength - 1);
+
+        chipRegisters.setFastSettle(true);
+        commandSequenceLength = chipRegisters.createCommandListRHDRegisterConfig(commandList, false, numCommands);
+        // Upload version with fast settle enabled to AuxCmd3 RAM Bank 2.
+        device->uploadCommandList(commandList, RHXController::AuxCmd3, 2);
+        device->selectAuxCommandLength(RHXController::AuxCmd3, 0, commandSequenceLength - 1);
+        chipRegisters.setFastSettle(false);
+
+        device->selectAuxCommandBankAllPorts(RHXController::AuxCmd3, settings.fastSettleEnabled ? 2 : 1);
+    }
+
+    setDAChpf(settings.desiredDAChpf, settings.desiredDAChpfState);
 }
 
 std::unique_ptr<GenericEditor> DeviceThread::createEditor(SourceNode* sn)

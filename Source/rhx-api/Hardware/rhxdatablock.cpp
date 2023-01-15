@@ -183,18 +183,13 @@ int RHXDataBlock::boardDacData(int channel, int t) const
 int RHXDataBlock::samplesPerDataBlock(ControllerType type_)
 {
     switch (type_) {
-    case ControllerRecordUSB2:
-    case  ControllerStimRecordUSB2:
-         return 60;
     case ControllerOEOpalKellyUSB2:
         return 300;
-    case ControllerRecordUSB3:
-        return 128;
     case ControllerOEOpalKellyUSB3:
     case ControllerOEECP5:
         return 256;
     default:
-        return 0;
+        return 128;
     }
 }
 

@@ -94,7 +94,7 @@ void AbstractRHXController::initialize()
     setCableLengthMeters(PortC, 0.914f);
     setCableLengthMeters(PortD, 0.914f);
 
-    updateRegisters();
+    //updateRegisters();
 
     if (type == ControllerStimRecordUSB2) {
         enableAuxCommandsOnAllStreams();
@@ -262,7 +262,7 @@ void AbstractRHXController::initialize()
         setChargeRecoveryMode(false); // set charge_recov_mode (false = current-limited charge recovery drivers; true = charge recovery switch)
     }
 
-    updateRegisters();
+   // updateRegisters();
 }
 
 // Return the maximum number of data streams for a controller of the given type.
