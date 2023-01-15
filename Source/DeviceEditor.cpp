@@ -847,7 +847,7 @@ bool HeadstageOptionsInterface::is32Channel(int hsIndex)
 
 void HeadstageOptionsInterface::set32Channel(int hsIndex, bool is32Channel)
 {
-    if (hsIndex == 0 && channelsOnHs1 > 0)
+    if (hsIndex == 0 && (board->getChannelsInHeadstage(hsNumber1) == 32))
     {
 		if (is32Channel)
 			channelsOnHs1 = 32;
@@ -858,7 +858,7 @@ void HeadstageOptionsInterface::set32Channel(int hsIndex, bool is32Channel)
         board->setNumChannels(hsNumber1, channelsOnHs1);
 	}
 
-	else if (hsIndex == 1 && channelsOnHs2 > 0)
+	else if (hsIndex == 1 && (board->getChannelsInHeadstage(hsNumber2) == 32))
 	{
 		if (is32Channel)
 			channelsOnHs2 = 32;
