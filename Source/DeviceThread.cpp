@@ -544,7 +544,7 @@ void DeviceThread::scanPorts()
 
     for (int i = 0; i < enabledStreams.size(); i++)
     {
-        std::cout << "Enabling stream " << i << " with source " << enabledStreams[i] << std::endl;
+        //std::cout << "Enabling stream " << i << " with source " << enabledStreams[i] << std::endl;
         device->enableDataStream(i, true);
         device->setDataSource(i, BoardDataSource(enabledStreams[i]));
     }

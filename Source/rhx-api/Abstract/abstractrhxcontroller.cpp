@@ -352,6 +352,7 @@ int AbstractRHXController::boardMode(ControllerType type_)
 int AbstractRHXController::findConnectedChips(std::vector<ChipType>& chipType, std::vector<int>& portIndex, std::vector<int>& commandStream,
     std::vector<int>& numChannelsOnPort)
 {
+
     int returnValue = 1;    // return 1 == everything okay
     int maxNumStreams = maxNumDataStreams();
     int maxSPIPorts = maxNumSPIPorts();
@@ -365,11 +366,42 @@ int AbstractRHXController::findConnectedChips(std::vector<ChipType>& chipType, s
     fill(portIndex.begin(), portIndex.end(), -1);
     std::vector<int> portIndexOld(maxMISOLines, -1);
 
+    commandStream.resize(maxNumStreams);
+    fill(commandStream.begin(), commandStream.end(), -1);
+
+    numChannelsOnPort.resize(maxSPIPorts);
+    fill(numChannelsOnPort.begin(), numChannelsOnPort.end(), 0);
+
+    // ControllerRecordUSB2 only
+    BoardDataSource initStreamPorts[8] = { PortA1, PortA2, PortB1, PortB2, PortC1, PortC2, PortD1, PortD2 };
+    BoardDataSource initStreamDdrPorts[8] = { PortA1Ddr, PortA2Ddr, PortB1Ddr, PortB2Ddr,
+                                              PortC1Ddr, PortC2Ddr, PortD1Ddr, PortD2Ddr };
+    if (type == ControllerRecordUSB2)
+    {
+        
+        for (int stream = 0; stream < maxNumStreams; stream++) {
+            setDataSource(stream, initStreamPorts[stream]);
+        }
+    }
+    else if (type == ControllerOEOpalKellyUSB2 ||
+        type == ControllerOEOpalKellyUSB3 ||
+        type == ControllerOEECP5)
+    {
+        for (int i = 0; i < maxNumDataStreams(); i++)
+            enableDataStream(i, false);
+
+        for (int i = 0; i < maxMISOLines; i++)
+            enableDataStream(i, true);
+
+        for (int i = 0; i < maxMISOLines; i++)
+            setDataSource(i, initStreamPorts[i]);
+    }
+
     portIndexOld[0] = 0; portIndexOld[1] = 0;
     portIndexOld[2] = 1; portIndexOld[3] = 1;
     portIndexOld[4] = 2; portIndexOld[5] = 2;
     portIndexOld[6] = 3; portIndexOld[7] = 3;
-
+    
     if (type == ControllerRecordUSB3) {
         portIndexOld[8] = 4; portIndexOld[9] = 4;
         portIndexOld[10] = 5; portIndexOld[11] = 5;
@@ -377,46 +409,32 @@ int AbstractRHXController::findConnectedChips(std::vector<ChipType>& chipType, s
         portIndexOld[14] = 7; portIndexOld[15] = 7;
     }
 
-    commandStream.resize(maxNumStreams);
-    fill(commandStream.begin(), commandStream.end(), -1);
+    // Enable all non-DDR data streams.
 
-    numChannelsOnPort.resize(maxSPIPorts);
-    fill(numChannelsOnPort.begin(), numChannelsOnPort.end(), 0);
-
-    BoardDataSource initStreamPorts[8] = { PortA1, PortA2, PortB1, PortB2, PortC1, PortC2, PortD1, PortD2 };
-
-    BoardDataSource initStreamDdrPorts[8] = { PortA1Ddr, PortA2Ddr, PortB1Ddr, PortB2Ddr,
-                                              PortC1Ddr, PortC2Ddr, PortD1Ddr, PortD2Ddr };
-
-
-    for (int i = 0; i < maxNumDataStreams(); i++)
-        enableDataStream(i, false);
-
-    for (int i = 0; i < maxMISOLines; i++)
-        enableDataStream(i, true);
-
-    for (int i = 0; i < maxMISOLines; i++)
-        setDataSource(i, initStreamPorts[i]);
+    if (type != ControllerOEOpalKellyUSB2 &&
+        type != ControllerOEOpalKellyUSB3 &&
+        type != ControllerOEECP5)
+    {
+        for (int stream = 0; stream < maxNumStreams; stream++)
+        {
+            enableDataStream(stream, true);
+        }
+        if (type == ControllerRecordUSB3) {
+            for (int stream = 1; stream < maxNumStreams; stream += 2) {
+                enableDataStream(stream, false);
+            }
+        }
+        
+    }
+    
 
     // Run the SPI interface for multiple command sequences (i.e., NRepeats data blocks).
-    const int NRepeats = 1;
-    RHXDataBlock dataBlock(type, 8);
+    const int NRepeats = 2;
+    RHXDataBlock dataBlock(type, getNumEnabledDataStreams());
     setMaxTimeStep(NRepeats * dataBlock.samplesPerDataBlock());
     setContinuousRunMode(false);
 
-    // Select RAM Bank 0 for AuxCmd3 initially, so the ADC is calibrated.
-    selectAuxCommandBank(PortA, AuxCmd3, 0);
-    selectAuxCommandBank(PortB, AuxCmd3, 0);
-    selectAuxCommandBank(PortC, AuxCmd3, 0);
-    selectAuxCommandBank(PortD, AuxCmd3, 0);
-
-    if (getType() == ControllerRecordUSB3)
-    {
-        selectAuxCommandBank(PortE, AuxCmd3, 0);
-        selectAuxCommandBank(PortF, AuxCmd3, 0);
-        selectAuxCommandBank(PortG, AuxCmd3, 0);
-        selectAuxCommandBank(PortH, AuxCmd3, 0);
-    }
+    int auxCmdSlot = (type == ControllerStimRecordUSB2 ? AuxCmd1 : AuxCmd3);
 
     std::vector<std::vector<int> > goodDelays;
     goodDelays.resize(maxMISOLines);
@@ -429,21 +447,17 @@ int AbstractRHXController::findConnectedChips(std::vector<ChipType>& chipType, s
 
     // Run SPI command sequence at all 16 possible FPGA MISO delay settings
     // to find optimum delay for each SPI interface cable.
-    for (int delay = 0; delay < 16; ++delay)
-    {
+    for (int delay = 0; delay < 16; ++delay) {
         setCableDelay(PortA, delay);
         setCableDelay(PortB, delay);
         setCableDelay(PortC, delay);
         setCableDelay(PortD, delay);
-
-        if (type == ControllerRecordUSB3)
-        {
+        if (type == ControllerRecordUSB3) {
             setCableDelay(PortE, delay);
             setCableDelay(PortF, delay);
             setCableDelay(PortG, delay);
             setCableDelay(PortH, delay);
         }
-
         run();
 
         // Wait for the run to complete.
@@ -458,8 +472,8 @@ int AbstractRHXController::findConnectedChips(std::vector<ChipType>& chipType, s
             // Read the Intan chip ID number from each RHD or RHS chip found.
             // Record delay settings that yield good communication with the chip.
             int register59Value;
-            for (int stream = 0; stream < maxNumDataStreams(); stream++) {
-                int id = dataBlock.getChipID(stream, AuxCmd3, register59Value);
+            for (int stream = 0; stream < maxMISOLines; stream++) {
+                int id = dataBlock.getChipID(stream, auxCmdSlot, register59Value);
                 if (id == (int)RHD2132Chip || id == (int)RHD2216Chip || id == (int)RHS2116Chip ||
                     (id == (int)RHD2164Chip && register59Value == Register59MISOA)) {
                     goodDelays[stream][delay] = goodDelays[stream][delay] + 1;
@@ -517,7 +531,6 @@ int AbstractRHXController::findConnectedChips(std::vector<ChipType>& chipType, s
     setCableDelay(PortB, std::max(optimumDelay[2], optimumDelay[3]));
     setCableDelay(PortC, std::max(optimumDelay[4], optimumDelay[5]));
     setCableDelay(PortD, std::max(optimumDelay[6], optimumDelay[7]));
-
     if (type == ControllerRecordUSB3) {
         setCableDelay(PortE, std::max(optimumDelay[8], optimumDelay[9]));
         setCableDelay(PortF, std::max(optimumDelay[10], optimumDelay[11]));
@@ -553,27 +566,29 @@ int AbstractRHXController::findConnectedChips(std::vector<ChipType>& chipType, s
     // Return a warning if 256-channel capacity of ControllerRecordUSB2 is exceeded.
     if ((type == ControllerRecordUSB2 || type == ControllerOEOpalKellyUSB2) && numStreamsRequired > 8) {
         returnValue = (rhd2216ChipPresent ? -2 : -1);   // -1 == ControllerRecordUSB2 has >256 channels plugged in.
-                                                        // -2 == ...and at least one of the chips is an RHD2216.
+        // -2 == ...and at least one of the chips is an RHD2216.
     }
 
+    for (int stream = 0; stream < maxNumStreams; ++stream) {
+        enableDataStream(stream, false);    // Disable all data streams.
+    }
+    
     // Reconfigure USB data streams in consecutive order to accommodate all connected chips.
-
-    std::cout << "Disable USB streams" << std::endl;
-
-    for (int i = 0; i < maxMISOLines; i++)
-        enableDataStream(i, false);
-
     if (type == ControllerRecordUSB2 || type == ControllerOEOpalKellyUSB2) {
         int stream = 0;
         for (int oldStream = 0; oldStream < maxMISOLines; ++oldStream) {
             if ((chipTypeOld[oldStream] == RHD2216Chip) && (stream < maxNumStreams)) {
                 chipType[stream] = RHD2216Chip;
                 portIndex[stream] = portIndexOld[oldStream];
+                //enableDataStream(stream, true);
+                //setDataSource(stream, initStreamPorts[oldStream]);
                 stream++;
             }
             else if ((chipTypeOld[oldStream] == RHD2132Chip) && (stream < maxNumStreams)) {
                 chipType[stream] = RHD2132Chip;
                 portIndex[stream] = portIndexOld[oldStream];
+                //enableDataStream(stream, true);
+                //setDataSource(stream, initStreamPorts[oldStream]);
                 stream++;
             }
             else if ((chipTypeOld[oldStream] == RHD2164Chip) && (stream < maxNumStreams - 1)) {
@@ -581,8 +596,16 @@ int AbstractRHXController::findConnectedChips(std::vector<ChipType>& chipType, s
                 chipType[stream + 1] = RHD2164MISOBChip;
                 portIndex[stream] = portIndexOld[oldStream];
                 portIndex[stream + 1] = portIndexOld[oldStream];
+                //enableDataStream(stream, true);
+                //enableDataStream(stream + 1, true);
+                //setDataSource(stream, initStreamPorts[oldStream]);
+                //setDataSource(stream + 1, initStreamDdrPorts[oldStream]);
                 stream += 2;
             }
+        }
+        // Note: commmandStream not defined for ControllerRecordUSB2 type.
+        for (; stream < maxNumStreams; ++stream) {
+            enableDataStream(stream, false);    // Disable unused data streams.
         }
     }
     else if (type == ControllerRecordUSB3 || type == ControllerOEOpalKellyUSB3 || type == ControllerOEECP5) {
@@ -591,12 +614,16 @@ int AbstractRHXController::findConnectedChips(std::vector<ChipType>& chipType, s
             if ((chipTypeOld[oldStream] == RHD2216Chip) && (stream < maxNumStreams)) {
                 chipType[stream] = RHD2216Chip;
                 portIndex[stream] = portIndexOld[oldStream];
+               // enableDataStream(2 * oldStream, true);
+                //enableDataStream(2 * oldStream + 1, false);
                 commandStream[stream] = 2 * oldStream;
                 stream++;
             }
             else if ((chipTypeOld[oldStream] == RHD2132Chip) && (stream < maxNumStreams)) {
                 chipType[stream] = RHD2132Chip;
                 portIndex[stream] = portIndexOld[oldStream];
+               // enableDataStream(2 * oldStream, true);
+               // enableDataStream(2 * oldStream + 1, false);
                 commandStream[stream] = 2 * oldStream;
                 stream++;
             }
@@ -605,10 +632,16 @@ int AbstractRHXController::findConnectedChips(std::vector<ChipType>& chipType, s
                 chipType[stream + 1] = RHD2164MISOBChip;
                 portIndex[stream] = portIndexOld[oldStream];
                 portIndex[stream + 1] = portIndexOld[oldStream];
+               // enableDataStream(2 * oldStream, true);
+               // enableDataStream(2 * oldStream + 1, true);
                 commandStream[stream] = 2 * oldStream;
                 commandStream[stream + 1] = 2 * oldStream + 1;
                 stream += 2;
             }
+            //else {
+            //    enableDataStream(2 * oldStream, false);    // Disable unused data streams.
+            //    enableDataStream(2 * oldStream + 1, false);
+           // }
         }
     }
     else if (type == ControllerStimRecordUSB2) {
@@ -617,14 +650,18 @@ int AbstractRHXController::findConnectedChips(std::vector<ChipType>& chipType, s
             if ((chipTypeOld[oldStream] == RHS2116Chip) && (stream < maxNumStreams)) {
                 chipType[stream] = RHS2116Chip;
                 portIndex[stream] = portIndexOld[oldStream];
+               // enableDataStream(oldStream, true);
                 commandStream[stream] = oldStream;
                 stream++;
             }
+           // else {
+            //    enableDataStream(oldStream, false);    // Disable unused data streams.
+            //}
         }
     }
 
-
     return returnValue;
+
 }
 
 // Return the board mode for a controller of this controller's type.
