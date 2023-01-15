@@ -402,6 +402,16 @@ void DeviceEditor::saveVisualizerEditorParameters(XmlElement* xml)
     xml->setAttribute("LEDs", ledButton->getToggleState());
     xml->setAttribute("ClockDivideRatio", clockInterface->getClockDivideRatio());
 
+
+    // loop through all headstage options interfaces and save their parameters
+    for (int i = 0; i < 4; i++)
+    {
+        XmlElement* hsOptions = xml->createNewChildElement("HSOPTIONS");
+        hsOptions->setAttribute("index", i);
+        hsOptions->setAttribute("hs1_full_channels", headstageOptionsInterfaces[i]->is32Channel(0));
+        hsOptions->setAttribute("hs2_full_channels", headstageOptionsInterfaces[i]->is32Channel(1));
+    }
+    
     for (int i = 0; i < 8; i++)
     {
         XmlElement* adc = xml->createNewChildElement("ADCRANGE");
@@ -455,6 +465,17 @@ void DeviceEditor::loadVisualizerEditorParameters(XmlElement* xml)
         int range = adc->getIntAttribute("Range", -1);
         if (channel >= 0 && range >= 0)
             board->setAdcRange(channel, range);
+    }
+
+    forEachXmlChildElementWithTagName(*xml, hsOptions, "HSOPTIONS")
+    {
+        int index = hsOptions->getIntAttribute("index", -1);
+
+        if (index > -1)
+        {
+            headstageOptionsInterfaces[index]->set32Channel(0, hsOptions->getBoolAttribute("hs1_full_channels", true));
+            headstageOptionsInterfaces[index]->set32Channel(1, hsOptions->getBoolAttribute("hs2_full_channels", true));
+        }
     }
 
     // load channel naming scheme
@@ -823,6 +844,42 @@ void HeadstageOptionsInterface::buttonClicked(Button* button)
     }
 
 }
+
+
+bool HeadstageOptionsInterface::is32Channel(int hsIndex)
+{
+    if (hsIndex == 0)
+        return channelsOnHs1 == 32;
+
+    else if (hsIndex == 1)
+        return channelsOnHs2 == 32;
+}
+
+void HeadstageOptionsInterface::set32Channel(int hsIndex, bool is32Channel)
+{
+    if (hsIndex == 0 && channelsOnHs1 > 0)
+    {
+        if (is32Channel)
+            channelsOnHs1 = 32;
+        else
+            channelsOnHs1 = 16;
+
+        hsButton1->setLabel(String(channelsOnHs1));
+        board->setNumChannels(hsNumber1, channelsOnHs1);
+    }
+
+    else if (hsIndex == 1 && channelsOnHs2 > 0)
+    {
+        if (is32Channel)
+            channelsOnHs2 = 32;
+        else
+            channelsOnHs2 = 16;
+
+        hsButton2->setLabel(String(channelsOnHs2));
+        board->setNumChannels(hsNumber1, channelsOnHs1);
+    }
+}
+
 
 
 void HeadstageOptionsInterface::paint(Graphics& g)

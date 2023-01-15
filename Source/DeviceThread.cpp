@@ -600,6 +600,9 @@ void DeviceThread::updateSettings(OwnedArray<ContinuousChannel>* continuousChann
             for (int ch = 0; ch < headstage->getNumChannels(); ch++)
             {
 
+                if (headstage->getHalfChannels() && ch >= 16)
+                    continue;
+                
                 ContinuousChannel::Settings channelSettings{
                     ContinuousChannel::ELECTRODE,
                     headstage->getChannelName(ch),
@@ -1240,6 +1243,7 @@ bool DeviceThread::updateBuffer()
 
                 for (int chan = 0; chan < nChans; chan++)
                 {
+
                     channel++;
                     thisSample[channel] = float(*(uint16*)(bufferPtr + chanIndex) - 32768) * 0.195f;
                     chanIndex += 2 * numStreams; // single chan width (2 bytes)
