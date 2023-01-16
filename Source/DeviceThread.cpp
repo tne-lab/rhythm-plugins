@@ -693,15 +693,21 @@ void DeviceThread::scanPorts()
 
         if (commandStream[i] > -1)
         {
-            if (chipType[i] == CHIP_ID_RHD2164)
+            if (chipType[i] == RHD2164Chip)
             {
                 enableHeadstage(commandStream[i] / 2, true, 2, 32);
-                std::cout << "RHD2164" << std::endl;
             }
-            else if (chipType[i] != CHIP_ID_RHD2164_B) 
+            else if (chipType[i] == RHD2132Chip)
             {
                 enableHeadstage(commandStream[i] / 2, true, 1, 32);
-                std::cout << "RHD2164_B" << std::endl;
+            }
+            else if (chipType[i] == RHD2216Chip)
+            {
+                enableHeadstage(commandStream[i] / 2, true, 1, 16);
+            }
+            else if (chipType[i] == RHS2116Chip)
+            {
+                enableHeadstage(commandStream[i] / 2, true, 1, 16);
             }
         }
         
