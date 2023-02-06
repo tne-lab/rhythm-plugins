@@ -6,7 +6,7 @@
 // which references the FrontPanel DLL methods.
 //
 //------------------------------------------------------------------------
-// Copyright (c) 2005-2020 Opal Kelly Incorporated
+// Copyright (c) 2005-2021 Opal Kelly Incorporated
 //------------------------------------------------------------------------
 
 #ifndef __okFrontPanel_h__
@@ -105,6 +105,8 @@ typedef struct okFrontPanelManagerHandle* okFrontPanelManager_HANDLE;
 typedef struct okCFrontPanelManagerHandle* okCFrontPanelManager_HANDLE;
 typedef struct okCFrontPanelDevicesHandle* okCFrontPanelDevices_HANDLE;
 #endif
+// This could be defined by a previously included header, e.g. X11/Xlib.h.
+#undef Bool
 typedef int Bool;
 #ifdef __cplusplus
 	typedef bool okBool;
@@ -202,6 +204,9 @@ typedef enum {
 	ok_brdXEM8350SECONDARY = 52,
 	ok_brdXEM7310MTA75 = 53,
 	ok_brdXEM7310MTA200 = 54,
+	ok_brdXEM9025 = 55,
+	ok_brdXEM8320AU25P = 56,
+	ok_brdXEM8310AU25P = 57,
 } ok_BoardModel;
 
 typedef enum {
@@ -325,6 +330,9 @@ enum okEDeviceInterface {
 #define OK_PRODUCT_XEM8350SECONDARY         (52)
 #define OK_PRODUCT_XEM7310MTA75             (53)
 #define OK_PRODUCT_XEM7310MTA200            (54)
+#define OK_PRODUCT_XEM9025                  (55)
+#define OK_PRODUCT_XEM8320AU25P            (56)
+#define OK_PRODUCT_XEM8310AU25P            (57)
 
 #define OK_PRODUCT_OEM_START                11000
 
@@ -387,6 +395,9 @@ enum okEProduct {
 	okPRODUCT_XEM8350SECONDARY       = OK_PRODUCT_XEM8350SECONDARY,
 	okPRODUCT_XEM7310MTA75           = OK_PRODUCT_XEM7310MTA75,
 	okPRODUCT_XEM7310MTA200          = OK_PRODUCT_XEM7310MTA200,
+	okPRODUCT_XEM9025                = OK_PRODUCT_XEM9025,
+	okPRODUCT_XEM8320AU25P          = OK_PRODUCT_XEM8320AU25P,
+	okPRODUCT_XEM8310AU25P          = OK_PRODUCT_XEM8310AU25P,
 
 	okPRODUCT_OEM_START              = OK_PRODUCT_OEM_START
 };
@@ -508,6 +519,7 @@ typedef struct {
 	int             interfaceIndex;
 
 	okBool          configuresFromSystemFlash;
+	okBool          hasQuadConfigFlash;
 } okTDeviceInfo;
 
 
@@ -582,9 +594,9 @@ okDLLEXPORT void DLL_ENTRY okError_Free(okError* err);
 // this.
 #define OK_API_VERSION_MAJOR 5
 #define OK_API_VERSION_MINOR 2
-#define OK_API_VERSION_MICRO 3
+#define OK_API_VERSION_MICRO 5
 
-#define OK_API_VERSION_STRING "5.2.3"
+#define OK_API_VERSION_STRING "5.2.5"
 
 // Check if the API version is at least equal to the specified one, use as
 // #if OK_CHECK_API_VERSION(5, 0, 0)
@@ -1034,6 +1046,9 @@ public:
 		brdXEM8350SECONDARY=52,
 		brdXEM7310MTA75=53,
 		brdXEM7310MTA200=54,
+		brdXEM9025=55,
+		brdXEM8320AU25P=56,
+		brdXEM8310AU25P=57,
 	};
 	enum ErrorCode {
 		NoError                    = 0,

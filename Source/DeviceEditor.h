@@ -126,39 +126,20 @@ namespace RhythmNode
 	};
 
 
-	/**
-
-		Holds buttons for headstages on one port.
-
-		If a 32-channel headstages is detected, it
-		allows the user to toggle between 16 and 32-channel mode
-
-	*/
 	class HeadstageOptionsInterface : public Component,
-		public Button::Listener
+									  public Button::Listener
 	{
 	public:
 
 		/** Constructor*/
 		HeadstageOptionsInterface(DeviceThread*, DeviceEditor*, int hsNum);
-
-		/** Destructor */
 		~HeadstageOptionsInterface();
 
-		/** Draw the options interface background */
 		void paint(Graphics& g);
 
-		/** Toggle between 16 and 32 ch */
 		void buttonClicked(Button* button);
 
-		/** Refresh button state*/
 		void checkEnabledState();
-
-		/** Checks whether headstage is in 32- or 16-channel mode*/
-		bool is32Channel(int hsIndex);
-
-		/** Sets HS in 32- or 16-ch mode */
-		void set32Channel(int hsIndex, bool is32Channel);
 
 	private:
 

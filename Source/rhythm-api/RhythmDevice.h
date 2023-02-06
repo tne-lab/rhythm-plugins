@@ -337,6 +337,7 @@ private:
     /** Rhythm API classes*/
     std::unique_ptr<Rhd2000EvalBoard> evalBoard;
     Rhd2000Registers chipRegisters;
+    //std::unique_ptr<Rhd2000DataBlock> dataBlock;
     std::vector<Rhd2000EvalBoard::BoardDataSource> enabledStreams;
 
     int INIT_STEP;

@@ -182,22 +182,23 @@ int RHXDataBlock::boardDacData(int channel, int t) const
 //sumedh entire function replaced
 int RHXDataBlock::samplesPerDataBlock(ControllerType type_ )
 {
-//    switch (type_) {
-//    case ControllerRecordUSB2:
-//        // return 60;
-//    case ControllerStimRecordUSB2:
-//    case ControllerRecordUSB3:
-//        return 128;
-//    default:
-//        return 0;
-//    }
-    return 128;
+    switch (type_) {
+    case ControllerRecordUSB2:
+        return 60;
+    case ControllerStimRecordUSB2:
+        return 128;
+    case ControllerRecordUSB3:
+        return 128;
+    default:
+        return 0;
+    }
+    //return 128;
 }
 
 int RHXDataBlock::samplesPerDataBlock() const
 {
-//    return samplesPerDataBlock(type);
-    return 128;
+    return samplesPerDataBlock(type); //sumedh
+    //return 128;
 }
 
 // Return the number of RHX data blocks that should be read over the USB interface each time for an approximate
@@ -238,6 +239,9 @@ int RHXDataBlock::channelsPerStream(ControllerType type_)
     switch (type_) {
     case ControllerRecordUSB2:
     case ControllerRecordUSB3:
+    case ControllerOEOpalKellyUSB2:
+    case ControllerOEOpalKellyUSB3:
+    case ControllerOEECP5:
         return 32;
     case ControllerStimRecordUSB2:
         return 16;
@@ -251,6 +255,9 @@ int RHXDataBlock::numAuxChannels(ControllerType type_)
     switch (type_) {
     case ControllerRecordUSB2:
     case ControllerRecordUSB3:
+    case ControllerOEOpalKellyUSB2:
+    case ControllerOEOpalKellyUSB3:
+    case ControllerOEECP5:
         return 3;
     case ControllerStimRecordUSB2:
         return 4;
@@ -265,9 +272,18 @@ unsigned int RHXDataBlock::dataBlockSizeInWords(ControllerType type_, int numDat
     case ControllerRecordUSB2:
         return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_) + 1) + 8 + 2);
         // 4 = magic number; 2 = time stamp; 36 = (32 amp channels + 3 aux commands + 1 filler word); 8 = ADCs; 2 = TTL in/out
+    case ControllerOEOpalKellyUSB2:
+        return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_) + 1) + 8 + 2);
+        // 4 = magic number; 2 = time stamp; 36 = (32 amp channels + 3 aux commands + 1 filler word); 8 = ADCs; 2 = TTL in/out
     case ControllerRecordUSB3:
         return samplesPerDataBlock(type_) * (4 + 2 + (numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_))) + (numDataStreams_ % 4) + 8 + 2);
         // 4 = magic number; 2 = time stamp; 35 = (32 amp channels + 3 aux commands); 0-3 filler words; 8 = ADCs; 2 = TTL in/out
+    case ControllerOEOpalKellyUSB3:
+        return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_) + 1) + 8 + 2);
+        // 4 = magic number; 2 = time stamp; 36 = (32 amp channels + 3 aux commands + 1 filler word); 8 = ADCs; 2 = TTL in/out
+    case ControllerOEECP5:
+        return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (channelsPerStream(type_) + numAuxChannels(type_) + 1) + 8 + 2);
+        // 4 = magic number; 2 = time stamp; 36 = (32 amp channels + 3 aux commands + 1 filler word); 8 = ADCs; 2 = TTL in/out
     case ControllerStimRecordUSB2:
         return samplesPerDataBlock(type_) * (4 + 2 + numDataStreams_ * (2 * (channelsPerStream(type_) + numAuxChannels(type_)) + 4) + 8 + 8 + 2);
         // 4 = magic number; 2 = time stamp; 20 = (16 amp channels + 4 aux commands, each 32 bit results);
@@ -286,6 +302,12 @@ uint64_t RHXDataBlock::headerMagicNumber(ControllerType type_)
         return HeaderStimRecordUSB2;
     case ControllerRecordUSB3:
         return HeaderRecordUSB3;
+    case ControllerOEOpalKellyUSB2:
+        return HeaderOEOpalKellyUSB2;
+    case ControllerOEOpalKellyUSB3:
+        return HeaderOEOpalKellyUSB3;
+    case ControllerOEECP5:
+        return HeaderOEECP5;
     default:
         return 0;
     }
@@ -301,7 +323,12 @@ bool RHXDataBlock::checkUsbHeader(const uint8_t* usbBuffer, int index, Controlle
     uint64_t header = headerMagicNumber(type_);
 
     // Just check first byte initially to speed up cases where header doesn't match.
-    if (usbBuffer[index] != (uint8_t) (header & 0xffU)) return false;
+    if (usbBuffer[index] != (uint8_t)(header & 0xffU))
+    {
+        std::cout << "Magic number mismatch. Received " << int(usbBuffer[index]) << ", expected " << (header & 0xffU) << std::endl;
+    
+        return false;
+    }
 
     uint64_t x1 = usbBuffer[index];
     uint64_t x2 = usbBuffer[index + 1];
@@ -314,7 +341,9 @@ bool RHXDataBlock::checkUsbHeader(const uint8_t* usbBuffer, int index, Controlle
 
     uint64_t usbHeader = (x8 << 56) + (x7 << 48) + (x6 << 40) + (x5 << 32) + (x4 << 24) + (x3 << 16) + (x2 << 8) + (x1 << 0);
 
-    return (usbHeader == header);
+    //std::cout << "Actual header: " << usbHeader << ", expected " << header << std::endl;
+
+    return usbHeader == header;
 }
 
 bool RHXDataBlock::checkUsbHeader(const uint8_t* usbBuffer, int index) const
@@ -328,7 +357,7 @@ bool RHXDataBlock::checkUsbHeader(const uint8_t* usbBuffer, int index) const
 int RHXDataBlock::getChipID(int stream, int auxCmdSlot, int &register59Value) const
 {
     bool intanChipPresent;
-
+	//sumedh flipped conditions
     if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
         // First, check ROM registers 32-36 to verify that they hold 'INTAN', and
         // the initial chip name ROM registers 24-26 that hold 'RHD'.
@@ -349,10 +378,15 @@ int RHXDataBlock::getChipID(int stream, int auxCmdSlot, int &register59Value) co
             register59Value = -1;
             return -1;
         } else {
+            
+            //std::cout << "DEVICE ID: " << std::endl;
+            //for (int i = 32; i < 37; i++)
+            //    std::cout << auxiliaryData(stream, auxCmdSlot, i) << std::endl;
+
             register59Value = auxiliaryData(stream, auxCmdSlot, 23); // Register 59
             return auxiliaryData(stream, auxCmdSlot, 19); // chip ID (Register 63)
         }
-    } else if (type == ControllerStimRecordUSB2) {
+    } else if (type == ControllerStimRecordUSB2) { //sumedh 
         register59Value = -1; // Only used for RHD2164 chips
         // First, check ROM registers 251-253 to verify that they hold 'INTAN'.
         // This is just used to verify that we are getting good data over the SPI
@@ -383,14 +417,13 @@ void RHXDataBlock::print(int stream) const
     std::cout << "RHD 2000 Data Block contents:" << std::endl;
     std::cout << "  ROM contents:" << std::endl;
     std::cout << "    Chip Name: " <<
-        (char)auxiliaryData(stream, 2, 24) <<
-        (char)auxiliaryData(stream, 2, 25) <<
-        (char)auxiliaryData(stream, 2, 26) <<
-        (char)auxiliaryData(stream, 2, 27) <<
-        (char)auxiliaryData(stream, 2, 28) <<
-        (char)auxiliaryData(stream, 2, 29) <<
-        (char)auxiliaryData(stream, 2, 30) <<
-        (char)auxiliaryData(stream, 2, 31) << std::endl;
+        (char)((auxiliaryData(stream, 0, 61) & 0xff00) >> 8) <<
+        (char)((auxiliaryData(stream, 0, 61) & 0x00ff) >> 0) <<
+        (char)((auxiliaryData(stream, 0, 60) & 0xff00) >> 8) <<
+        (char)((auxiliaryData(stream, 0, 60) & 0x00ff) >> 0) <<
+        (char)((auxiliaryData(stream, 0, 59) & 0xff00) >> 8) <<
+        std::endl;
+
     std::cout << "    Company Name:" <<
         (char)auxiliaryData(stream, 2, 32) <<
         (char)auxiliaryData(stream, 2, 33) <<
@@ -575,13 +608,17 @@ void RHXDataBlock::fillFromUsbBuffer(uint8_t* usbBuffer, int blockIndex)
         if (!checkUsbHeader(usbBuffer, index)) {
             std::cerr << "Error in RHXDataBlock::fillFromUsbBuffer: Incorrect header.\n";
         }
-        index += 8;
+
+        index += 8; // magic number header width (bytes)
         timeStampInternal[t] = convertUsbTimeStamp(usbBuffer, index);
-        index += 4;
+        //std::cout << "Timestamp: " << timeStampInternal[t] << std::endl;
+        index += 4; // timestamp width
 
         // Read auxiliary command results 0-2 (for stim/record controller, read auxiliary command results 1-3)
         index1 = t * numDataStreams * numAuxChannels();
-        for (int channel = numAuxChannels() - 3; channel < numAuxChannels(); ++channel) {
+
+        for (int channel = numAuxChannels() - 3; channel < numAuxChannels(); ++channel) 
+        {
             index2 = channel * numDataStreams;
             for (int stream = 0; stream < numDataStreams; ++stream) {
                 auxiliaryDataInternal[index1 + index2 + stream] = convertUsbWord(usbBuffer, index);

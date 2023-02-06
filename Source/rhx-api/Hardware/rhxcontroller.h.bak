@@ -35,7 +35,6 @@
 #include "rhxglobals.h"
 #include "rhxdatablock.h"
 #include "okFrontPanelDLL.h"
-#include "okFrontPanel.h"
 
 const int USB3BlockSize	= 1024;
 const int RAMBurstSize = 32;
@@ -124,7 +123,7 @@ private:
     RHXController(const RHXController&);            // declaration only
     RHXController& operator=(const RHXController&); // declaration only
 
-    okCFrontPanel *dev;
+    std::unique_ptr<okCFrontPanel> dev;
 
     // Opal Kelly module USB interface endpoint addresses common to all controller types
     enum EndPoint {

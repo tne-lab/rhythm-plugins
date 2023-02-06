@@ -40,7 +40,7 @@ RHXRegisters::RHXRegisters(ControllerType type_, double sampleRate_, StimStepSiz
     sampleRate(sampleRate_),
     stimStep(stimStep_)
 {
-    if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
+    if (type != ControllerStimRecordUSB2) {
         ampPwr.resize(64);
         ampFastSettle.resize(1);
     } else {
@@ -62,7 +62,7 @@ RHXRegisters::RHXRegisters(ControllerType type_, double sampleRate_, StimStepSiz
     setSamplingParameters();
 
     // Set default values for all register settings.
-    if (type == ControllerRecordUSB2 || type == ControllerRecordUSB3) {
+    if (type != ControllerStimRecordUSB2) {
         setDefaultRHDSettings();
     } else {
         setDefaultRHSSettings();
@@ -1531,8 +1531,8 @@ int RHXRegisters::createCommandListRHDRegisterConfig(std::vector<unsigned int> &
     commandList.clear();    // If command list already exists, erase it and start a new one
 
     // Start with a few dummy commands in case chip is still powering up.
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 63));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 63));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 255));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 255));
 
     // Program RAM registers.
     commandList.push_back(createRHXCommand(RHXCommandRegWrite,  0, getRegisterValue( 0)));
@@ -1545,64 +1545,94 @@ int RHXRegisters::createCommandListRHDRegisterConfig(std::vector<unsigned int> &
     // Don't program Register 6 (Impedance Check DAC) here; create DAC waveform in another command stream.
     commandList.push_back(createRHXCommand(RHXCommandRegWrite,  7, getRegisterValue( 7)));
     commandList.push_back(createRHXCommand(RHXCommandRegWrite,  8, getRegisterValue( 8)));
-    commandList.push_back(createRHXCommand(RHXCommandRegWrite,  9, getRegisterValue( 9)));
+    //commandList.push_back(createRHXCommand(RHXCommandRegWrite,  9, getRegisterValue( 9)));
     commandList.push_back(createRHXCommand(RHXCommandRegWrite, 10, getRegisterValue(10)));
-    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 11, getRegisterValue(11)));
-    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 12, getRegisterValue(12)));
-    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 13, getRegisterValue(13)));
-    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 14, getRegisterValue(14)));
-    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 15, getRegisterValue(15)));
-    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 16, getRegisterValue(16)));
-    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 17, getRegisterValue(17)));
-
-    // Read ROM registers.
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 63));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 62));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 61));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 60));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 59));
-
-    // Read chip name from ROM.
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 48));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 49));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 50));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 51));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 52));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 53));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 54));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 55));
-
-    // Read Intan name from ROM.
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 40));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 41));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 42));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 43));
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 44));
-
-    // Read back RAM registers to confirm programming.
-    for (int reg = 0; reg < 18; ++reg) {
-        commandList.push_back(createRHXCommand(RHXCommandRegRead,  reg));
-    }
-
-    // Optionally, run ADC calibration (should only be run once after board is plugged in).
+    //commandList.push_back(createRHXCommand(RHXCommandRegWrite, 11, getRegisterValue(11)));
+    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 32, getRegisterValue(32)));
+    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 33, getRegisterValue(33)));
+    //
     if (calibrate) {
-        commandList.push_back(createRHXCommand(RHXCommandCalibrate));
-    } else {
-        commandList.push_back(createRHXCommand(RHXCommandRegRead, 63));
+        commandList.push_back(createRHXCommand(RHXCommandRegWrite, 34, getRegisterValue(34)));
+        commandList.push_back(createRHXCommand(RHXCommandRegWrite, 35, getRegisterValue(35)));
+        commandList.push_back(createRHXCommand(RHXCommandRegWrite, 36, getRegisterValue(36)));
+        commandList.push_back(createRHXCommand(RHXCommandRegWrite, 37, getRegisterValue(37)));
+    }
+    else {
+        commandList.push_back(createRHXCommand(RHXCommandRegRead, 255));
+        commandList.push_back(createRHXCommand(RHXCommandRegRead, 255));
+        commandList.push_back(createRHXCommand(RHXCommandRegRead, 255));
+        commandList.push_back(createRHXCommand(RHXCommandRegRead, 255));
+    }
+    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 38, getRegisterValue(38)));
+    // Register 40 (Compliance Monitor) is read only; clear it here:
+    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 40, 0, 0, 1));
+    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 42, getRegisterValue(42)));
+    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 44, getRegisterValue(44)));
+    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 46, getRegisterValue(46)));
+    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 48, getRegisterValue(48)));
+    // Register 50 (Fault Current Detect) is read only.
+
+    if (calibrate) {
+        for (int reg = 64; reg < 80; ++reg) {
+            commandList.push_back(createRHXCommand(RHXCommandRegWrite, reg, getRegisterValue(reg)));
+        }
+        for (int reg = 96; reg < 111; ++reg) {
+            commandList.push_back(createRHXCommand(RHXCommandRegWrite, reg, getRegisterValue(reg)));
+        }
+        // Update all triggered registers with last WRITE command.
+        commandList.push_back(createRHXCommand(RHXCommandRegWrite, 111, getRegisterValue(111), 1, 0));
+    }
+    else {
+        for (int i = 0; i < 32; ++i) {
+            commandList.push_back(createRHXCommand(RHXCommandRegRead, 255));
+        }
     }
 
-    // Program amplifier 31-63 power up/down registers in case a RHD2164 is connected.
-    // Note: We don't read these registers back, since they are only 'visible' on MISO B.
-    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 18, getRegisterValue(18)));
-    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 19, getRegisterValue(19)));
-    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 20, getRegisterValue(20)));
-    commandList.push_back(createRHXCommand(RHXCommandRegWrite, 21, getRegisterValue(21)));
+    // Read 5 ROM registers.
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 255));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 254));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 253));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 252));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 251));
 
-    // End with a dummy command.
-    commandList.push_back(createRHXCommand(RHXCommandRegRead, 63));
+    // Read back 56 RAM registers to confirm programming.
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 0));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 1));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 2));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 3));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 4));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 5));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 6));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 7));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 8));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 10));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 12));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 32));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 33));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 34));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 35));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 36));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 37));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 38));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 40));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 42));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 44));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 46));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 48));
+    commandList.push_back(createRHXCommand(RHXCommandRegRead, 50));
+    for (int reg = 64; reg < 80; ++reg) {
+        commandList.push_back(createRHXCommand(RHXCommandRegRead, reg));
+    }
+    for (int reg = 96; reg < 112; ++reg) {
+        commandList.push_back(createRHXCommand(RHXCommandRegRead, reg));
+    }
 
-    for (int i = 0; i < (numCommands - 60); ++i) {
-        commandList.push_back(createRHXCommand(RHXCommandRegRead, 63));
+    // ADC calibration should not be performed on RHS2116; rather, CLEAR command should be sent.
+    commandList.push_back(createRHXCommand(RHXCommandCalClear));
+
+    // End with dummy commands.
+    for (int i = 0; i < 10; ++i) {
+        commandList.push_back(createRHXCommand(RHXCommandRegRead, 255));
     }
 
     return (int)commandList.size();
@@ -1906,7 +1936,7 @@ int RHXRegisters::createCommandListZcheckDac(std::vector<unsigned int> &commandL
 // Return the length of the command list.  numCommands should be evenly divisible by four.
 int RHXRegisters::createCommandListRHDSampleAuxIns(std::vector<unsigned int> &commandList, int numCommands)
 {
-    if (type != ControllerRecordUSB2 && type != ControllerRecordUSB3) return -1;
+    if (type == ControllerStimRecordUSB2) return -1;
     if (numCommands < 4) return -1;
 
     commandList.clear();    // If command list already exists, erase it and start a new one.
@@ -1937,7 +1967,7 @@ int RHXRegisters::createCommandListRHDSampleAuxIns(std::vector<unsigned int> &co
 // Return the length of the command list.
 int RHXRegisters::createCommandListRHDUpdateDigOut(std::vector<unsigned int> &commandList, int numCommands)
 {
-    if (type != ControllerRecordUSB2 && type != ControllerRecordUSB3) return -1;
+    if (type == ControllerStimRecordUSB2) return -1;
     if (numCommands < 1) return -1;
 
     commandList.clear();    // If command list already exists, erase it and start a new one.

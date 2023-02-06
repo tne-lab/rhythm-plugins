@@ -138,7 +138,7 @@ public:
 
     void configureStimTrigger(int stream, int channel, int triggerSource, bool triggerEnabled, bool edgeTriggered, bool triggerOnLow);
     void configureStimPulses(int stream, int channel, int numPulses, StimShape shape, bool negStimFirst);
-    void updateChipCommandLists();
+
     StreamChannelPair streamChannelFromWaveName(const std::string& waveName) const;
 
     virtual bool isSynthetic() const = 0;

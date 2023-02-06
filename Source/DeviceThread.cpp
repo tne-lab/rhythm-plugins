@@ -230,17 +230,14 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
         LOGD("Initializing device.");
 
         device->initialize();
-
         if (device->getType() == ControllerStimRecordUSB2) {
             device->enableDcAmpConvert(true);
             device->setExtraStates(0);
         }
-        
         device->setSampleRate(SampleRate30000Hz);
-
-        // Upload all SPI command sequences.
+        // update command chip command
         updateChipCommandLists(true);
-
+        //
         if (device->getType() != ControllerStimRecordUSB2) {
             // Select RAM Bank 0 for AuxCmd3 initially, so the ADC is calibrated.
             device->selectAuxCommandBankAllPorts(RHXController::AuxCmd3, 0);
@@ -255,8 +252,8 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
 
         // Wait for the N-sample run to complete.
         while (device->isRunning()) {
-            std::this_thread::sleep_for(std::chrono::microseconds(100));
-		}
+            //qApp->processEvents();
+        }
 
         // Read the resulting single data block from the USB interface.
         RHXDataBlock dataBlock(device->getType(), device->getNumEnabledDataStreams());
@@ -265,8 +262,7 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
         if (device->getType() != ControllerStimRecordUSB2) {
             // Now that ADC calibration has been performed, we switch to the command sequence that does not execute
             // ADC calibration.
-            device->selectAuxCommandBankAllPorts(RHXController::AuxCmd3, 
-                settings.fastSettleEnabled ? 2 : 1);
+            device->selectAuxCommandBankAllPorts(RHXController::AuxCmd3, true ? 2 : 1);
         }
 
         // Set default configuration for all eight DACs on controller.
@@ -286,14 +282,16 @@ DeviceThread::DeviceThread(SourceNode* sn, BoardType boardType_) : DataThread(sn
         device->setCableDelay(PortB, 1);
         device->setCableDelay(PortC, 1);
         device->setCableDelay(PortD, 1);
-        
-        if (device->getType() == ControllerRecordUSB3) {
+        bool expanderBoardDetected = false;
+        if (device->getNumSPIPorts(expanderBoardDetected) > 4) {
             device->setCableDelay(PortE, 1);
             device->setCableDelay(PortF, 1);
             device->setCableDelay(PortG, 1);
             device->setCableDelay(PortH, 1);
         }
-
+        
+        
+        // change end
         int maxNumHeadstages = (boardType == RHD_RECORDING_CONTROLLER) ? 16 : 8;
 
         for (int i = 0; i < maxNumHeadstages; i++)
@@ -342,11 +340,26 @@ void DeviceThread::initialize(bool signalChainIsLoading)
     }
 }
 
-
-// Create SPI command lists and upload to auxiliary command slots.
-void DeviceThread::updateChipCommandLists(bool updateStimParams)
+std::unique_ptr<GenericEditor> DeviceThread::createEditor(SourceNode* sn)
 {
-    RHXRegisters chipRegisters(device->getType(), device->getSampleRate(), settings.stimStepSize);
+
+    std::unique_ptr<DeviceEditor> editor = std::make_unique<DeviceEditor>(sn, this);
+
+    return editor;
+}
+
+void DeviceThread::updateChipCommandLists(bool updateStimParams) {
+
+    // update code
+    StimStepSize stepsize;
+    if (device->getType() != ControllerStimRecordUSB2) {
+        stepsize =  StimStepSizeMin;
+    }
+    else {
+        stepsize = StimStepSize10nA;// (StimStepSize)stimStepSize->getIndex();
+    }
+    std::cout << "######################## " << stepsize << std::endl;
+    RHXRegisters chipRegisters(device->getType(), device->getSampleRate(), stepsize);
 
     chipRegisters.setDigOutLow(RHXRegisters::DigOut::DigOut1); // Take auxiliary output out of HiZ mode.
     chipRegisters.setDigOutLow(RHXRegisters::DigOut::DigOut2); // Take auxiliary output out of HiZ mode.
@@ -388,15 +401,14 @@ void DeviceThread::updateChipCommandLists(bool updateStimParams)
         device->selectAuxCommandBankAllPorts(RHXController::AuxCmd2, 0);
     }
 
-    // Set amplifier bandwidth parameters.
-    setDspCutoffFreq(settings.dsp.cutoffFreq);
-    setLowerBandwidth(settings.dsp.lowerBandwidth);
-    setUpperBandwidth(settings.dsp.upperBandwidth);
-    //enableDsp(true);
-    //state->actualDspCutoffFreq->setValueWithLimits(chipRegisters.setDspCutoffFreq(state->desiredDspCutoffFreq->getValue()));
+    //// Set amplifier bandwidth parameters.
+    ////state->holdUpdate();
+    //setDspCutoffFreq(getDspCutoffFreq()); //setting this
+    ////state->actualDspCutoffFreq->setValueWithLimits(chipRegisters.setDspCutoffFreq(state->desiredDspCutoffFreq->getValue()));
+    //state->actualDspCutoffFreq->setValueWithLimits(setDspCutoffFreq(state->desiredDspCutoffFreq->getValue()));
     //state->actualLowerBandwidth->setValueWithLimits(chipRegisters.setLowerBandwidth(state->desiredLowerBandwidth->getValue(), 0));
     //state->actualLowerSettleBandwidth->setValueWithLimits(chipRegisters.setLowerBandwidth(state->desiredLowerSettleBandwidth->getValue(), 1));
-   // state->actualUpperBandwidth->setValueWithLimits(chipRegisters.setUpperBandwidth(state->desiredUpperBandwidth->getValue()));
+    //state->actualUpperBandwidth->setValueWithLimits(chipRegisters.setUpperBandwidth(state->desiredUpperBandwidth->getValue()));
     //chipRegisters.enableDsp(state->dspEnabled->getValue());
     //state->releaseUpdate();
 
@@ -415,7 +427,7 @@ void DeviceThread::updateChipCommandLists(bool updateStimParams)
 
         // Wait for the 128-sample run to complete.
         while (device->isRunning()) {
-            std::this_thread::sleep_for(std::chrono::microseconds(100));
+            //qApp->processEvents();
         }
 
         device->flush();
@@ -442,18 +454,11 @@ void DeviceThread::updateChipCommandLists(bool updateStimParams)
         device->selectAuxCommandLength(RHXController::AuxCmd3, 0, commandSequenceLength - 1);
         chipRegisters.setFastSettle(false);
 
-        device->selectAuxCommandBankAllPorts(RHXController::AuxCmd3, settings.fastSettleEnabled ? 2 : 1);
+        device->selectAuxCommandBankAllPorts(RHXController::AuxCmd3, false ? 2 : 1);
     }
 
-    setDAChpf(settings.desiredDAChpf, settings.desiredDAChpfState);
-}
-
-std::unique_ptr<GenericEditor> DeviceThread::createEditor(SourceNode* sn)
-{
-
-    std::unique_ptr<DeviceEditor> editor = std::make_unique<DeviceEditor>(sn, this);
-
-    return editor;
+   /* setDacHighpassFilterEnabled(state->analogOutHighpassFilterEnabled->getValue());
+    setDacHighpassFilterFrequency(state->analogOutHighpassFilterFrequency->getValue());*/
 }
 
 void DeviceThread::handleBroadcastMessage(String msg)
@@ -685,6 +690,7 @@ void DeviceThread::scanPorts()
 
     chipId.clear();
 
+  
     for (int i = 0; i < chipType.size(); i++)
     {
         LOGC(int(chipType[i]), " ", portIndex[i], " ", commandStream[i]);
@@ -710,7 +716,7 @@ void DeviceThread::scanPorts()
                 enableHeadstage(commandStream[i] / 2, true, 1, 16);
             }
         }
-        
+
     }
 
     std::cout << "Chip IDs: " << std::endl;
@@ -775,9 +781,6 @@ void DeviceThread::updateSettings(OwnedArray<ContinuousChannel>* continuousChann
             for (int ch = 0; ch < headstage->getNumChannels(); ch++)
             {
 
-                if (headstage->getHalfChannels() && ch >= 16)
-                    continue;
-                
                 ContinuousChannel::Settings channelSettings{
                     ContinuousChannel::ELECTRODE,
                     headstage->getChannelName(ch),
@@ -1358,7 +1361,7 @@ bool DeviceThread::stopAcquisition()
 bool DeviceThread::updateBuffer()
 {
             
-    uint8_t* bufferPtr;
+    uint8_t* usbBuffer;
     oni_frame_t** frames;
     double ts;
 
@@ -1371,101 +1374,79 @@ bool DeviceThread::updateBuffer()
                 return true;
         }
         else {
-            if (usbThread->usbRead(bufferPtr) == 0)
+            if (usbThread->usbRead(usbBuffer) == 0)
             {
                 return true;
             }
         }
         
-        int index = 0;
+        int index = 0;// blockSize* BytesPerWord* blockSize;
         int auxIndex, chanIndex;
         int numStreams = enabledStreams.size();
         int nSamps = dataBlock->samplesPerDataBlock();
+        int highWord, index1, index2;
+        int numAuxChannels = 4;
 
-        for (int samp = 0; samp < nSamps; samp++)
-        {
-            int channel = -1;
+      
 
-            if (boardType == ONI_USB)
-            {
-                oni_frame_t* currentFrame = *frames + samp;
-                bufferPtr = ((uint8_t*)currentFrame->data) + 8;
+        for (int t = 0; t < nSamps; ++t) {
+            if (!dataBlock->checkUsbHeader(usbBuffer, index)) {
+                std::cerr << "Error in RHXDataBlock::fillFromUsbBuffer: Incorrect header.\n";
             }
-                
-            if (!dataBlock->checkUsbHeader(bufferPtr, index))
-            {
-                LOGE("Error in rhxcontroller::readDataBlock: Incorrect header.");
-                break;
-            }
+            std::cout << "index at the rhsblock :: " << index << std::endl;
+            index += 8;
+            int64 timestamp = dataBlock->convertUsbTimeStamp(usbBuffer, index);
+            index += 4;
 
-            index += 8; // magic number header width (bytes)
-            int64 timestamp = dataBlock->convertUsbTimeStamp(bufferPtr, index);
-            index += 4; // timestamp width
-            auxIndex = index; // aux chans start at this offset
-            index += 6 * numStreams; // width of the 3 aux chans
-
-            for (int dataStream = 0; dataStream < numStreams; dataStream++)
-            {
-
-                int nChans = numChannelsPerDataStream[dataStream];
-
-                chanIndex = index + 2 * dataStream;
-
-                if ((chipId[dataStream] == CHIP_ID_RHD2132) && (nChans == 16)) //RHD2132 16ch. headstage
-                {
-                    chanIndex += 2 * RHD2132_16CH_OFFSET * numStreams;
-                }
-
-                for (int chan = 0; chan < nChans; chan++)
-                {
-
-                    channel++;
-                    thisSample[channel] = float(*(uint16*)(bufferPtr + chanIndex) - 32768) * 0.195f;
-                    chanIndex += 2 * numStreams; // single chan width (2 bytes)
-                }
-
-            }
-
-           // if (samp == 0)
-            //        std::cout << index << std::endl;
-
-            index += 64 * numStreams; // neural data width
-            auxIndex += 2 * numStreams; // skip AuxCmd1 slots (see updateRegisters())
-
-            // copy the 3 aux channels
-            if (settings.acquireAux)
-            {
-                for (int dataStream = 0; dataStream < numStreams; dataStream++)
-                {
-                    if (chipId[dataStream] != CHIP_ID_RHD2164_B)
-                    {
-                        int auxNum = (samp + 3) % 4;
-                        if (auxNum < 3)
-                        {
-                            auxSamples[dataStream][auxNum] = float(*(uint16*)(bufferPtr + auxIndex) - 32768) * 0.0000374;
+            // Read auxiliary command results 0-2 (for stim/record controller, read auxiliary command results 1-3)
+            index1 = t * numStreams * numAuxChannels;
+            for (int channel = numAuxChannels - 3; channel < numAuxChannels; ++channel) {
+                index2 = channel * numStreams;
+                int lfp = numStreams;
+                int lfp2 = numAuxChannels;
+                for (int stream = 0; stream < numStreams; ++stream) {
+                    //auxiliaryDataInternal[index1 + index2 + stream] = dataBlock->convertUsbWord(usbBuffer, index);
+                    index += 2;
+                    if (device->getType() == ControllerStimRecordUSB2) {
+                        if (channel == 2) {
+                            //highWord = dataBlock->convertUsbWord(usbBuffer, index); // The top 16 bits will be either all 1's (results of a WRITE command)
+                                                                        // or all 0's (results of a READ command)
+                            //if (highWord == 0) {  // update compliance limit only if a 'read' command was executed, denoting a read from Register 40
+                            //    for (int ch = 0; ch < channelsPerStream(); ++ch) {
+                            //        complianceLimitInternal[complianceIndex++] = (auxiliaryDataInternal[index1 + (2 * numStreams) + stream] & (1 << ch)) ? 1 : 0;
+                            //    }
+                            //}
+                            //else {
+                            //    for (int ch = 0; ch < channelsPerStream(); ++ch) {
+                            //        complianceLimitInternal[complianceIndex++] = 0;  // if Register 40 was not read, assume no compliance limit violations
+                            //    }
+                            //}
                         }
-                        for (int chan = 0; chan < 3; chan++)
-                        {
-                            channel++;
-                            if (auxNum == 3)
-                            {
-                                auxBuffer[channel] = auxSamples[dataStream][chan];
-                            }
-                            thisSample[channel] = auxBuffer[channel];
-                        }
+                        index += 2;
                     }
-                    auxIndex += 2; // single chan width (2 bytes)
                 }
             }
 
-            //if (samp == 0)
-            //    std::cout << index << std::endl;
+            // Read amplifier channels.
+            for (int stream = 0; stream < numStreams; ++stream) {
+            for (int channel = 0; channel < numChannelsPerDataStream[stream]; ++channel) {
+                //int lfp3 = numChannelsPerDataStream[stream];
+                
+                    if (device->getType() == ControllerStimRecordUSB2) {
+                        //dcAmplifierDataInternal[dcAmpIndex++] = dataBlock->convertUsbWord(usbBuffer, index);
 
-            if (boardType == RHS_STIM_RECORDING_CONTROLLER)
-            {
+                        index += 2;
+                    }
+                    thisSample[channel] = float(*(uint16*)(usbBuffer + channel) - 32768) * 0.195f;
+                    //amplifierDataInternal[ampIndex++] = dataBlock->convertUsbWord(usbBuffer, index);
+                    index += 2;
+                }
+            }
+
+            if (device->getType() == ControllerStimRecordUSB2) {
                 // Read auxiliary command 0 results (see above for auxiliary command 1-3 results).
                 for (int stream = 0; stream < numStreams; ++stream) {
-                    //auxiliaryDataInternal[index1 + stream] = convertUsbWord(usbBuffer, index);
+                    //auxiliaryDataInternal[index1 + stream] = dataBlock->convertUsbWord(usbBuffer, index);
                     index += 2;
                     index += 2; // We are skipping the top 16 bits here since they will typically be either all 1's (results of a WRITE command)
                                 // or all 0's (results of a READ command).
@@ -1473,72 +1454,53 @@ bool DeviceThread::updateBuffer()
 
                 // Read stimulation control parameters.
                 for (int stream = 0; stream < numStreams; ++stream) {
-                    //stimOnInternal[stimOnIndex++] = convertUsbWord(usbBuffer, index);
+                    //stimOnInternal[stimOnIndex++] = dataBlock->convertUsbWord(usbBuffer, index);
                     index += 2;
                 }
 
                 for (int stream = 0; stream < numStreams; ++stream) {
-                    //stimPolInternal[stimPolIndex++] = convertUsbWord(usbBuffer, index);
+                    //stimPolInternal[stimPolIndex++] = dataBlock->convertUsbWord(usbBuffer, index);
                     index += 2;
                 }
 
                 for (int stream = 0; stream < numStreams; ++stream) {
-                    //ampSettleInternal[ampSettleIndex++] = convertUsbWord(usbBuffer, index);
+                    //ampSettleInternal[ampSettleIndex++] = dataBlock->convertUsbWord(usbBuffer, index);
                     index += 2;
                 }
 
                 for (int stream = 0; stream < numStreams; ++stream) {
-                    //chargeRecovInternal[chargeRecovIndex++] = convertUsbWord(usbBuffer, index);
+                    //chargeRecovInternal[chargeRecovIndex++] = dataBlock->convertUsbWord(usbBuffer, index);
                     index += 2;
                 }
 
                 // Read from DACs.
                 for (int i = 0; i < 8; ++i) {
-                    //boardDacDataInternal[dacIndex++] = convertUsbWord(usbBuffer, index);
+                    //boardDacDataInternal[dacIndex++] = dataBlock->convertUsbWord(usbBuffer, index);
                     index += 2;
                 }
             }
 
             // Skip filler words in each data stream.
-            if (boardType != RHD_RECORDING_CONTROLLER) {
+            if (device->getType() == ControllerRecordUSB2) {
                 index += 2 * numStreams;
             }
-            else
-            {
+            else if (device->getType() == ControllerRecordUSB3) {
                 index += 2 * (numStreams % 4);
             }
 
-            // copy the 8 ADC channels
-            if (settings.acquireAdc)
-            {
-                for (int adcChan = 0; adcChan < 8; ++adcChan)
-                {
-
-                    channel++;
-                    // ADC waveform units = volts
-
-                    if (boardType == ACQUISITION_BOARD)
-                    {
-                        thisSample[channel] = adcRangeSettings[adcChan] == 0 ?
-                            0.00015258789 * float(*(uint16*)(bufferPtr + index)) - 5 - 0.4096 : // account for +/-5V input range and DC offset
-                            0.00030517578 * float(*(uint16*)(bufferPtr + index)); 
-                    }
-                    else if (boardType == INTAN_RHD_USB) {
-                        thisSample[channel] = 0.000050354 * float(*(uint16*)(bufferPtr + index));
-                    }
-                    index += 2; // single chan width (2 bytes)
-                }
-            }
-            else
-            {
-                index += 16; // skip ADC chans (8 * 2 bytes)
+            // Read from ADCs.
+            for (int i = 0; i < 8; ++i) {
+               //boardAdcDataInternal[adcIndex++] = dataBlock->convertUsbWord(usbBuffer, index);
+                index += 2;
             }
 
+            // Read TTL input and output values.
+            //ttlInInternal[t] = dataBlock->convertUsbWord(usbBuffer, index);
+            uint64 ttlEventWord = *(uint64*)(usbBuffer + index) & 65535;
+            index += 2;
 
-
-            uint64 ttlEventWord = *(uint64*)(bufferPtr + index) & 65535;
-
-            index += 4; // skip to end of buffer
+            //ttlOutInternal[t] = dataBlock->convertUsbWord(usbBuffer, index);
+            index += 2;
 
             sourceBuffers[0]->addToBuffer(thisSample,
                 &timestamp,
@@ -1546,8 +1508,6 @@ bool DeviceThread::updateBuffer()
                 &ttlEventWord,
                 1);
 
-            //if (samp == 0)
-             //   std::cout << index << std::endl;
         }
 
     }

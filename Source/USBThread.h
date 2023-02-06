@@ -70,7 +70,7 @@ namespace RhythmNode
 		AbstractRHXController* const m_board;
 		OniDevice* m_oni_device;
 		
-		HeapBlock<unsigned char> m_buffers[2];
+		HeapBlock<unsigned char> m_buffers[20000];
 		oni_frame_t* oni_buffers[ONI_BUFFER_SAMPLES * 2];
 		
 		long m_lastRead[2];

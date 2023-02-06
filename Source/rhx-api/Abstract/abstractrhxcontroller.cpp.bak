@@ -83,6 +83,19 @@ AbstractRHXController::~AbstractRHXController()
 void AbstractRHXController::initialize()
 {
     resetBoard();
+
+    // Select per-channel amplifier sampling rate.
+    setSampleRate(AmplifierSampleRate::SampleRate30000Hz);
+
+    // Now that we have set our sampling rate, we can set the MISO sampling delay
+    // which is dependent on the sample rate.
+    setCableLengthMeters(PortA, 0.914f);
+    setCableLengthMeters(PortB, 0.914f);
+    setCableLengthMeters(PortC, 0.914f);
+    setCableLengthMeters(PortD, 0.914f);
+
+    //updateRegisters();
+
     if (type == ControllerStimRecordUSB2) {
         enableAuxCommandsOnAllStreams();
         setGlobalSettlePolicy(false, false, false, false, false);
@@ -156,17 +169,10 @@ void AbstractRHXController::initialize()
     for (int i = 0; i < 8; i++)
     {
         enableDac(i, false);
-
-
-    }
-    for (int i = 0; i < 8; i++)
-    {
         selectDacDataStream(i, 0);
-    }
-    for (int i = 0; i < 8; i++)
-    {
         selectDacDataChannel(i, 0);
     }
+
     setDacManual(32768);    // midrange value = 0 V
 
     setDacGain(0);

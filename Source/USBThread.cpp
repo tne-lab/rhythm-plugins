@@ -130,7 +130,7 @@ void USBThread::run()
 					break;
 
 				if (!useOniFrame)
-					read = m_board->readDataBlocksRaw(1, m_buffers[m_currentBuffer].getData());
+					read = m_board->readDataBlocksRaw(8, m_buffers[m_currentBuffer].getData());
 				else
 				{
 					for (int i = 0; i < ONI_BUFFER_SAMPLES; i++)
